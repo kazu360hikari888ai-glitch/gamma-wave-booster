@@ -1,0 +1,6 @@
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('index.html')
+    .setTitle('ガンマ波ブースター (Gamma Wave Booster Pro)')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
+}

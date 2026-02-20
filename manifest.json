@@ -1,0 +1,30 @@
+{
+    "name": "脳波ブースター Pro",
+    "short_name": "脳波ブースター",
+    "description": "バイノーラルビートで集中・リラックス・睡眠をサポートする脳波誘導アプリ",
+    "start_url": "./index.html",
+    "display": "standalone",
+    "background_color": "#0f172a",
+    "theme_color": "#1e1b4b",
+    "orientation": "portrait",
+    "categories": [
+        "health",
+        "lifestyle",
+        "medical"
+    ],
+    "lang": "ja",
+    "icons": [
+        {
+            "src": "icons/icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        },
+        {
+            "src": "icons/icon.svg",
+            "sizes": "512x512",
+            "type": "image/svg+xml",
+            "purpose": "maskable"
+        }
+    ]
+}

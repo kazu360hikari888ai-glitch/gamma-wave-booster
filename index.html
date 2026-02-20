@@ -1,0 +1,1699 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="description" content="政木和三先生の理論に基づく脳波誘導アプリ。バイノーラルビートで集中・リラックス・睡眠をサポート。">
+    <title>脳波ブースター Pro | Gamma Wave Booster</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#1e1b4b">
+    <link rel="icon" type="image/svg+xml" href="./icons/icon.svg">
+    <!-- Apple PWA 対応 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="脳波ブースター">
+    <link rel="apple-touch-icon" href="./icons/icon.svg">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: JetBrains Mono & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@100;400;700&display=swap"
+        rel="stylesheet">
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <style>
+        /* Custom Styles for Glassmorphism & Animations */
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+            background-attachment: fixed;
+            font-family: 'Inter', sans-serif;
+            color: #e2e8f0;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Animation: Breathe / Aura */
+        @keyframes breathe {
+
+            0%,
+            100% {
+                transform: scale(1);
+                opacity: 0.25;
+            }
+
+            50% {
+                transform: scale(1.15);
+                opacity: 0.55;
+            }
+        }
+
+        @keyframes breathe2 {
+
+            0%,
+            100% {
+                transform: scale(1.1);
+                opacity: 0.15;
+            }
+
+            50% {
+                transform: scale(0.9);
+                opacity: 0.35;
+            }
+        }
+
+        @keyframes pulse-ring {
+            0% {
+                transform: scale(1);
+                opacity: 0.6;
+            }
+
+            100% {
+                transform: scale(1.5);
+                opacity: 0;
+            }
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-6px);
+            }
+        }
+
+        .aura {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            z-index: 0;
+            animation: breathe 8s infinite ease-in-out;
+            pointer-events: none;
+        }
+
+        .aura-secondary {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(120px);
+            z-index: 0;
+            animation: breathe2 12s infinite ease-in-out;
+            pointer-events: none;
+        }
+
+        .pulse-ring {
+            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+
+        .float-animation {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        /* Glassmorphism Panel */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+
+        /* Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            margin-top: -7px;
+            box-shadow: 0 0 12px rgba(255, 255, 255, 0.6), 0 0 4px rgba(255, 255, 255, 0.3);
+            transition: box-shadow 0.2s;
+        }
+
+        input[type=range]::-webkit-slider-thumb:hover {
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.9);
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+        }
+
+        /* Button Glow */
+        .btn-glow:hover {
+            box-shadow: 0 0 20px currentColor;
+        }
+
+        /* Mode Info Panel */
+        .mode-info {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        /* Badge styles for flow modes */
+        .badge-flow {
+            display: inline-block;
+            font-size: 9px;
+            padding: 1px 6px;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.6);
+            margin-left: 4px;
+            vertical-align: middle;
+        }
+
+        /* Save Toast Notification */
+        @keyframes toast-in {
+            0% {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+
+            15% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+
+            85% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+
+            100% {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+        }
+
+        .save-toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 999999;
+            animation: toast-in 2s ease-in-out forwards;
+            pointer-events: none;
+        }
+
+        /* Group Tabs */
+        .group-tabs {
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            padding-bottom: 4px;
+        }
+
+        .group-tabs::-webkit-scrollbar {
+            display: none;
+        }
+
+        .group-tab {
+            flex-shrink: 0;
+            padding: 6px 12px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.03);
+            color: rgba(255, 255, 255, 0.4);
+            cursor: pointer;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+        }
+
+        .group-tab:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .group-tab.active {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.25);
+            color: #fff;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <!-- Main Application Script -->
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Firebase Configuration Placeholder ---
+        // NOTE: Replace these values with your actual Firebase project config.
+        const firebaseConfig = {
+            apiKey: "API_KEY",
+            authDomain: "PROJECT_ID.firebaseapp.com",
+            projectId: "PROJECT_ID",
+            storageBucket: "PROJECT_ID.appspot.com",
+            messagingSenderId: "SENDER_ID",
+            appId: "APP_ID"
+        };
+
+        // Initialize Firebase (Safely check if config is valid)
+        let db = null;
+        let auth = null;
+
+        // --- Debug Logger ---
+        const debugLogs = [];
+        const originalLog = console.log;
+        const originalError = console.error;
+
+        function logToBuffer(type, args) {
+            const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
+            debugLogs.push(`[${type}] ${msg}`);
+            if (debugLogs.length > 50) debugLogs.shift();
+            // Dispatch event to update UI if needed
+            window.dispatchEvent(new Event('debug-update'));
+        }
+
+        console.log = (...args) => { originalLog(...args); logToBuffer('LOG', args); };
+        console.error = (...args) => { originalError(...args); logToBuffer('ERR', args); };
+
+        try {
+            if (firebaseConfig.apiKey !== "API_KEY") {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                auth = firebase.auth();
+                auth.signInAnonymously().catch(console.error);
+            }
+        } catch (e) {
+            console.warn("Firebase Init Failed:", e);
+        }
+
+        // --- Constants ---
+        const CARRIER_FREQ = 151; // Hz - Masaki Kazumi Theory
+
+        // --- Mode Groups ---
+        const MODE_GROUPS = [
+            {
+                id: 'auto_group', label: '🔄 自動フロー', color: '#a855f7',
+                modes: [
+                    { id: 'auto', label: '全自動・覚醒', desc: 'V字型誘導 → ガンマ波で覚醒', color: '#a855f7', target: 'variable', flow: true },
+                    { id: 'refresh_flow', label: '疲労回復・リフレッシュ', desc: '脳を休めて → スッキリ目覚め', color: '#059669', target: 'variable', flow: true },
+                ]
+            },
+            {
+                id: 'focus_group', label: '🎯 集中・学習', color: '#ef4444',
+                modes: [
+                    { id: 'power_focus_flow', label: '極限集中（ゾーン）', desc: 'SMR波 → ガンマ波で極限集中', color: '#dc2626', target: 'variable', flow: true },
+                    { id: 'focus', label: '超集中', desc: 'ガンマ波 40Hz', color: '#ef4444', target: 40 },
+                    { id: 'learning', label: '学習・記憶', desc: 'SMR波 14Hz', color: '#f97316', target: 14 },
+                    { id: 'lucid', label: '明晰', desc: 'ハイベータ波 25Hz', color: '#22c55e', target: 25 },
+                    { id: 'creativity', label: '創造性', desc: 'シータ波 7Hz', color: '#eab308', target: 7 },
+                ]
+            },
+            {
+                id: 'relax_group', label: '🌿 リラックス・癒し', color: '#14b8a6',
+                modes: [
+                    { id: 'peace_flow', label: 'やすらぎフロー', desc: 'リラックス → 共振 → 深い平安 → 安定', color: '#2dd4bf', target: 'variable', flow: true },
+                    { id: 'peace', label: '平安・やすらぎ', desc: '低アルファ波 8.5Hz', color: '#5eead4', target: 8.5 },
+                    { id: 'inner_silence', label: '内なる静寂', desc: 'シューマン-調和 7.25Hz', color: '#99f6e4', target: 7.25 },
+                    { id: 'relax', label: 'リラックス', desc: 'アルファ波 10Hz', color: '#14b8a6', target: 10 },
+                    { id: 'stress', label: 'ストレス解消', desc: 'シューマン共振 7.83Hz', color: '#06b6d4', target: 7.83 },
+                    { id: 'autonomic', label: '自律神経の安定', desc: '調和の周波数 6.68Hz', color: '#0d9488', target: 6.68 },
+                    { id: 'anxiety', label: '不安解消', desc: '低アルファ波 8Hz', color: '#3b82f6', target: 8 },
+                ]
+            },
+            {
+                id: 'mood_group', label: '😊 気分向上', color: '#f59e0b',
+                modes: [
+                    { id: 'happy_flow', label: 'ハッピーフロー', desc: 'リラックス → 幸福感 → 活力 → 安定', color: '#d97706', target: 'variable', flow: true },
+                    { id: 'happiness', label: '幸福感・ハッピー', desc: 'SMR波 12.5Hz', color: '#f59e0b', target: 12.5 },
+                    { id: 'vitality', label: '活力・元気', desc: '低ベータ波 15Hz', color: '#fb923c', target: 15 },
+                    { id: 'euphoria', label: '多幸感・喜び', desc: 'アルファ-SMR波 11Hz', color: '#fbbf24', target: 11 },
+                ]
+            },
+            {
+                id: 'health_group', label: '💊 健康・痛み緩和', color: '#f43f5e',
+                modes: [
+                    { id: 'pain_relief_flow', label: '痛みの緩和フロー', desc: 'リラックス → 鎮痛 → 回復促進', color: '#be123c', target: 'variable', flow: true },
+                    { id: 'pain_relief', label: '痛みの緩和', desc: 'エンドルフィン促進 4Hz', color: '#f43f5e', target: 4 },
+                    { id: 'inflammation', label: '炎症・腫れの緩和', desc: '低デルタ波 2Hz', color: '#e11d48', target: 2 },
+                    { id: 'headache', label: '頭痛・偏頭痛の緩和', desc: 'アルファ波 10Hz', color: '#fb7185', target: 10 },
+                    { id: 'muscle_relax', label: '筋肉の弛緩', desc: '低シータ波 5Hz', color: '#fda4af', target: 5 },
+                ]
+            },
+            {
+                id: 'meditation_group', label: '🧘 瞑想', color: '#6366f1',
+                modes: [
+                    { id: 'deep_meditation_flow', label: '至高の瞑想', desc: '深い瞑想 → ガンマ波で至高体験', color: '#4338ca', target: 'variable', flow: true },
+                    { id: 'meditation', label: '深い瞑想', desc: '低シータ波 6Hz', color: '#6366f1', target: 6 },
+                ]
+            },
+            {
+                id: 'sleep_group', label: '🌙 睡眠', color: '#8b5cf6',
+                modes: [
+                    { id: 'sleep_flow', label: '安眠・不安解消', desc: '不安解消 → リラックス → 深い眠り', color: '#4c1d95', target: 'variable', flow: true },
+                    { id: 'sleep', label: '熟睡導入', desc: 'デルタ波 1Hz', color: '#8b5cf6', target: 1 },
+                ]
+            },
+        ];
+
+        // Flatten for lookup
+        const MODES = MODE_GROUPS.flatMap(g => g.modes);
+
+        const ENV_OPTIONS = [
+            { id: 'none', label: 'なし' },
+            { id: 'stream', label: 'せせらぎ' },
+            { id: 'ocean', label: '南国の海' },
+            { id: 'custom1', label: 'お好み1' },
+            { id: 'custom2', label: 'お好み2' },
+            { id: 'custom3', label: 'お好み3' },
+            { id: 'custom4', label: 'お好み4' },
+            { id: 'custom5', label: 'お好み5' },
+        ];
+
+        // --- Audio Logic Helper ---
+        class AudioManager {
+            constructor() {
+                this.ctx = null;
+                this.masterGain = null;
+                this.envGain = null;
+
+                this.oscL = null;
+                this.oscR = null;
+                this.cameraNoiseNode = null; // For pink/brown noise
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+                    // Master Gain (Binaural)
+                    this.masterGain = this.ctx.createGain();
+                    this.masterGain.connect(this.ctx.destination);
+
+                    // Environment Gain (Noise)
+                    this.envGain = this.ctx.createGain();
+                    this.envGain.connect(this.ctx.destination);
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            setBinaural(carrier, diff) {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                // If oscillators exist and are running, update frequency smoothly
+                if (this.oscL && this.oscR) {
+                    try {
+                        this.oscL.frequency.setTargetAtTime(carrier, now, 0.1);
+                        this.oscR.frequency.setTargetAtTime(carrier + diff, now, 0.1);
+                        return;
+                    } catch (e) {
+                        // Fallback if stale
+                    }
+                }
+
+                // Create new oscillators (First run or after stop)
+                // Left
+                this.oscL = this.ctx.createOscillator();
+                this.oscL.type = 'sine';
+                this.oscL.frequency.setValueAtTime(carrier, now);
+                const panL = this.ctx.createStereoPanner();
+                panL.pan.value = -1;
+                this.oscL.connect(panL).connect(this.masterGain);
+
+                // Right
+                this.oscR = this.ctx.createOscillator();
+                this.oscR.type = 'sine';
+                this.oscR.frequency.setValueAtTime(carrier + diff, now);
+                const panR = this.ctx.createStereoPanner();
+                panR.pan.value = 1;
+                this.oscR.connect(panR).connect(this.masterGain);
+
+                this.oscL.start();
+                this.oscR.start();
+            }
+
+            startNoise(type = 'pink') {
+                if (!this.ctx) return;
+                this.stopNoise();
+
+                const bufferSize = 2 * this.ctx.sampleRate;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const output = buffer.getChannelData(0);
+
+                // Generate Pink Noise
+                if (type === 'pink') {
+                    let b0, b1, b2, b3, b4, b5, b6;
+                    b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
+                    for (let i = 0; i < bufferSize; i++) {
+                        const white = Math.random() * 2 - 1;
+                        b0 = 0.99886 * b0 + white * 0.0555179;
+                        b1 = 0.99332 * b1 + white * 0.0750759;
+                        b2 = 0.96900 * b2 + white * 0.1538520;
+                        b3 = 0.86650 * b3 + white * 0.3104856;
+                        b4 = 0.55000 * b4 + white * 0.5329522;
+                        b5 = -0.7616 * b5 - white * 0.0168980;
+                        output[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+                        output[i] *= 0.11; // (roughly) compensate for gain
+                        b6 = white * 0.115926;
+                    }
+                }
+                // Generate Brown Noise
+                else {
+                    let lastOut = 0.0;
+                    for (let i = 0; i < bufferSize; i++) {
+                        const white = Math.random() * 2 - 1;
+                        output[i] = (lastOut + (0.02 * white)) / 1.02;
+                        lastOut = output[i];
+                        output[i] *= 3.5; // (roughly) compensate for gain
+                    }
+                }
+
+                this.cameraNoiseNode = this.ctx.createBufferSource();
+                this.cameraNoiseNode.buffer = buffer;
+                this.cameraNoiseNode.loop = true;
+                this.cameraNoiseNode.connect(this.envGain);
+                this.cameraNoiseNode.start();
+            }
+
+            stopNoise() {
+                if (this.cameraNoiseNode) {
+                    try {
+                        this.cameraNoiseNode.stop();
+                    } catch (e) { }
+                    this.cameraNoiseNode.disconnect();
+                    this.cameraNoiseNode = null;
+                }
+            }
+
+            cleanup() {
+                if (this.oscL) {
+                    try { this.oscL.stop(); } catch (e) { }
+                    try { this.oscL.disconnect(); } catch (e) { }
+                    this.oscL = null;
+                }
+                if (this.oscR) {
+                    try { this.oscR.stop(); } catch (e) { }
+                    try { this.oscR.disconnect(); } catch (e) { }
+                    this.oscR = null;
+                }
+                this.stopNoise();
+                if (this.ctx) {
+                    this.ctx.close().catch(e => console.error(e));
+                    this.ctx = null;
+                }
+            }
+
+            setVolumes(masterVol, envVol, fade = false) {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                // Volume Scaling
+                const normMaster = masterVol / 100;
+                const actualMaster = Math.pow(normMaster, 2) * 0.1;
+
+                // Master Gain
+                if (this.masterGain) {
+                    if (fade) {
+                        try {
+                            this.masterGain.gain.setValueAtTime(0, now);
+                            this.masterGain.gain.linearRampToValueAtTime(actualMaster, now + 3);
+                        } catch (e) { }
+                    } else {
+                        if (masterVol <= 0) {
+                            try {
+                                this.masterGain.gain.cancelScheduledValues(now);
+                                this.masterGain.gain.setTargetAtTime(0, now, 0.1);
+                            } catch (e) { }
+                        } else {
+                            try { this.masterGain.gain.setTargetAtTime(actualMaster, now, 0.5); } catch (e) { }
+                        }
+                    }
+                }
+
+                // Env Gain
+                if (this.envGain) {
+                    if (envVol <= 0) {
+                        try { this.envGain.gain.setTargetAtTime(0, now, 0.1); } catch (e) { }
+                    } else {
+                        try { this.envGain.gain.setTargetAtTime(envVol / 100, now, 0.5); } catch (e) { }
+                    }
+                }
+            }
+        }
+
+
+
+        // --- Media File Manager (Local Audio/Video) ---
+        class MediaFileManager {
+            constructor() {
+                this.element = null;
+            }
+
+            play(url, volume) {
+                this.stop();
+                if (!url) return;
+
+                // Create hidden video element (handles both audio/video files)
+                this.element = document.createElement('video');
+                this.element.src = url;
+                this.element.loop = true;
+                this.element.volume = volume / 100;
+                this.element.style.display = 'none';
+                this.element.playsInline = true;
+                document.body.appendChild(this.element);
+
+                this.element.play().catch(e => console.error("Local Media Play Error:", e));
+            }
+
+            stop() {
+                if (this.element) {
+                    this.element.pause();
+                    this.element.src = "";
+                    this.element.remove();
+                    this.element = null;
+                }
+            }
+
+            setVolume(vol) {
+                if (this.element) {
+                    this.element.volume = vol / 100;
+                }
+            }
+        }
+
+
+
+        // --- Components ---
+
+        const IconSettings = () => (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+        );
+
+        const IconPlay = () => (
+            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+            </svg>
+        );
+
+        const IconPause = () => (
+            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+            </svg>
+        );
+
+        // --- Settings Modal Component (Portal) ---
+        const SettingsModal = ({ show, onClose, envFiles, setEnvFiles, onExport, onImport, customFolderFiles, setCustomFolderFiles }) => {
+            if (!show) return null;
+
+            const handleFileSelect = (envId, file) => {
+                if (!file) return;
+                const url = URL.createObjectURL(file);
+                if (envFiles[envId] && envFiles[envId].url) URL.revokeObjectURL(envFiles[envId].url);
+                setEnvFiles(prev => ({ ...prev, [envId]: { url, name: file.name } }));
+            };
+
+            const handleFolderSelect = (envId, files) => {
+                if (!files || files.length === 0) return;
+                const audioFiles = Array.from(files).filter(f =>
+                    /\.(mp3|wav|ogg|m4a|aac|flac|mp4|webm|mkv)$/i.test(f.name)
+                );
+                if (audioFiles.length === 0) return;
+                // Store folder file list
+                setCustomFolderFiles(prev => ({ ...prev, [envId]: audioFiles }));
+                // Auto-select first file
+                const url = URL.createObjectURL(audioFiles[0]);
+                if (envFiles[envId] && envFiles[envId].url) URL.revokeObjectURL(envFiles[envId].url);
+                setEnvFiles(prev => ({ ...prev, [envId]: { url, name: audioFiles[0].name } }));
+            };
+
+            const handleFolderFileSelect = (envId, file) => {
+                const url = URL.createObjectURL(file);
+                if (envFiles[envId] && envFiles[envId].url) URL.revokeObjectURL(envFiles[envId].url);
+                setEnvFiles(prev => ({ ...prev, [envId]: { url, name: file.name } }));
+            };
+
+
+
+            const renderCustomSetting = (envId, label, index) => {
+                const folderFiles = customFolderFiles[envId] || [];
+                return (
+                    <div key={envId} className="p-3 bg-white/5 rounded-lg border border-white/10 space-y-2">
+                        <label className="text-sm font-bold text-white block">🎧 {label}</label>
+                        <div className="flex gap-1.5">
+                            {/* Single File */}
+                            <div className="flex-1">
+                                <input type="file" accept="audio/*,video/*"
+                                    onChange={(e) => e.target.files && handleFileSelect(envId, e.target.files[0])}
+                                    className="hidden" id={`file-single-${envId}`} />
+                                <label htmlFor={`file-single-${envId}`}
+                                    className="block w-full text-center py-2 px-2 bg-white/10 hover:bg-white/20 border border-dashed border-white/30 rounded cursor-pointer text-[10px] text-white transition-colors">
+                                    📄 ファイル
+                                </label>
+                            </div>
+                            {/* Folder */}
+                            <div className="flex-1">
+                                <input type="file" accept="audio/*,video/*"
+                                    onChange={(e) => e.target.files && handleFolderSelect(envId, e.target.files)}
+                                    className="hidden" id={`folder-upload-${envId}`}
+                                    multiple
+                                    ref={(el) => { if (el) { el.setAttribute('webkitdirectory', ''); el.setAttribute('directory', ''); } }} />
+                                <label htmlFor={`folder-upload-${envId}`}
+                                    className="block w-full text-center py-2 px-2 bg-white/10 hover:bg-white/20 border border-dashed border-amber-400/40 rounded cursor-pointer text-[10px] text-white transition-colors">
+                                    📁 フォルダ
+                                </label>
+                            </div>
+                        </div>
+                        {/* Current selection */}
+                        {envFiles[envId] && (
+                            <div className="text-[10px] text-emerald-400 truncate">▶ {envFiles[envId].name}</div>
+                        )}
+                        {/* Folder file list */}
+                        {folderFiles.length > 1 && (
+                            <div className="max-h-24 overflow-y-auto bg-black/30 rounded p-1 space-y-0.5">
+                                {folderFiles.map((f, i) => (
+                                    <button key={i}
+                                        onClick={() => handleFolderFileSelect(envId, f)}
+                                        className={`w-full text-left text-[10px] px-2 py-1 rounded transition-colors truncate ${envFiles[envId] && envFiles[envId].name === f.name
+                                            ? 'bg-emerald-600/40 text-emerald-300'
+                                            : 'text-white/50 hover:bg-white/10 hover:text-white'
+                                            }`}>
+                                        {f.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            return ReactDOM.createPortal(
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+                    zIndex: 2147483647, backgroundColor: 'rgba(0,0,0,0.85)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <div className="glass-panel w-full max-w-sm rounded-2xl p-6 space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto" style={{ backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.2)' }}>
+                        <div className="flex justify-between items-center sticky top-0 bg-[#1e293b]/95 pb-2 border-b border-white/10 z-10">
+                            <h2 className="text-lg font-bold text-white">詳細設定</h2>
+                            <button onClick={onClose} className="text-white/50 hover:text-white px-2 text-xl">✕</button>
+                        </div>
+
+
+
+                        {/* Custom Sound Slots */}
+                        <div className="space-y-3">
+                            <div className="text-[10px] uppercase text-white/40 tracking-widest">環境音設定（ファイル / フォルダ）</div>
+                            {renderCustomSetting('stream', 'せせらぎ', 0)}
+                            {renderCustomSetting('ocean', '南国の海', 0)}
+                            {[1, 2, 3, 4, 5].map(n => renderCustomSetting(`custom${n}`, `お好み ${n}`, n))}
+                        </div>
+
+                        {/* Backup / Restore Section */}
+                        <div className="p-3 bg-white/5 rounded-lg border border-white/10 space-y-3">
+                            <label className="text-sm font-bold text-white block">💾 設定のバックアップ / 復元</label>
+                            <p className="text-[10px] text-white/40 leading-relaxed">
+                                設定をJSONファイルとしてスマホに保存できます。機種変更や別の端末への移行時にお使いください。
+                            </p>
+                            <div className="flex gap-2">
+                                <button onClick={onExport}
+                                    className="flex-1 py-2.5 bg-emerald-600/80 hover:bg-emerald-500 rounded-lg text-xs font-bold text-white transition-colors flex items-center justify-center gap-1.5">
+                                    <span>📤</span> バックアップ保存
+                                </button>
+                                <label className="flex-1 py-2.5 bg-amber-600/80 hover:bg-amber-500 rounded-lg text-xs font-bold text-white transition-colors flex items-center justify-center gap-1.5 cursor-pointer">
+                                    <span>📥</span> 復元
+                                    <input type="file" accept=".json"
+                                        onChange={(e) => { if (e.target.files[0]) onImport(e.target.files[0]); e.target.value = ''; }}
+                                        className="hidden" />
+                                </label>
+                            </div>
+                        </div>
+
+                        <button onClick={onClose}
+                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-bold text-white shadow-lg transition-colors sticky bottom-0">
+                            閉じる
+                        </button>
+                    </div>
+                </div>,
+                document.body
+            );
+        };
+
+        // --- Main App Component ---
+
+        function App() {
+            // Logic State
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [currentMode, setCurrentMode] = useState(MODES[0]);
+            const [masterVol, setMasterVol] = useState(20); // Lower Deafult
+            const [envVol, setEnvVol] = useState(20); // Lower Default
+            const [selectedEnv, setSelectedEnv] = useState('none');
+            // File support per environment
+            const [envFiles, setEnvFiles] = useState({
+                stream: null, ocean: null,
+                custom1: null, custom2: null, custom3: null, custom4: null, custom5: null
+            });
+            // Folder file lists for custom slots
+            const [customFolderFiles, setCustomFolderFiles] = useState({
+                stream: [], ocean: [],
+                custom1: [], custom2: [], custom3: [], custom4: [], custom5: []
+            });
+
+            // Timer State for Auto Mode
+            const [elapsed, setElapsed] = useState(0); // seconds
+            const [duration, setDuration] = useState(3600); // seconds (default 60m)
+            const timerRef = useRef(null);
+            const wakeLockRef = useRef(null);
+
+            // Audio Managers
+            const audioMgr = useRef(new AudioManager());
+            const mediaMgr = useRef(new MediaFileManager());
+
+            // --- Security: 値のサニタイズヘルパー ---
+            const sanitizeNumber = (val, min, max, defaultVal) => {
+                const num = Number(val);
+                if (isNaN(num) || !isFinite(num)) return defaultVal;
+                return Math.max(min, Math.min(max, Math.round(num)));
+            };
+
+            const sanitizeString = (val, allowed, defaultVal) => {
+                if (typeof val !== 'string') return defaultVal;
+                return allowed.includes(val) ? val : defaultVal;
+            };
+
+            const allowedEnvIds = ENV_OPTIONS.map(e => e.id);
+            const allowedModeIds = MODES.map(m => m.id);
+            const allowedDurations = [600, 1200, 1800, 3600, 5400];
+
+            // ロード完了フラグ（初回保存の競合防止）
+            const loadCompleteRef = useRef(false);
+
+            // Init & Load Settings 
+            useEffect(() => {
+
+                // Load Config
+                const savedConfig = localStorage.getItem('gamma_config');
+                if (savedConfig) {
+                    try {
+                        const config = JSON.parse(savedConfig);
+                        if (typeof config !== 'object' || config === null) throw new Error('Invalid config');
+
+                        if (config.masterVol !== undefined) setMasterVol(sanitizeNumber(config.masterVol, 0, 100, 20));
+                        if (config.envVol !== undefined) setEnvVol(sanitizeNumber(config.envVol, 0, 100, 20));
+
+                        if (config.duration) {
+                            const dur = sanitizeNumber(config.duration, 60, 7200, 3600);
+                            setDuration(dur);
+                        }
+                        if (config.selectedEnv) {
+                            // Migrate old 'local' to 'custom1'
+                            let env = config.selectedEnv === 'local' ? 'custom1' : config.selectedEnv;
+                            env = sanitizeString(env, allowedEnvIds, 'none');
+                            setSelectedEnv(env);
+                        }
+
+                        if (config.currentModeId) {
+                            const safeId = sanitizeString(config.currentModeId, allowedModeIds, null);
+                            if (safeId) {
+                                const found = MODES.find(m => m.id === safeId);
+                                if (found) setCurrentMode(found);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('設定の読み込みに失敗しました:', e);
+                    }
+                }
+
+                // ロード完了を示すフラグをセット（次のレンダリングサイクルで保存を有効化）
+                requestAnimationFrame(() => { loadCompleteRef.current = true; });
+
+                return () => {
+                    if (timerRef.current) clearInterval(timerRef.current);
+                    audioMgr.current.cleanup();
+                    mediaMgr.current.stop();
+                };
+            }, []);
+
+
+
+            // Handle Play/Pause
+            const togglePlay = () => {
+                const nextState = !isPlaying;
+                setIsPlaying(nextState);
+
+                if (nextState) {
+                    audioMgr.current.init();
+                    startSession();
+                } else {
+                    stopSession();
+                }
+            };
+
+            const startSession = () => {
+                updateFrequency(); // Start oscillators
+
+                // Fade in master volume
+                audioMgr.current.setVolumes(masterVol, envVol, true);
+
+                // Start Environment Sound
+                updateEnvironmentSound();
+
+                // --- バックグラウンド再生の維持 ---
+                // MediaSession APIでOSメディアコントロール対応
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.metadata = new MediaMetadata({
+                        title: currentMode.label,
+                        artist: '脳波ブースター Pro',
+                        album: 'Gamma Wave Booster',
+                    });
+                    navigator.mediaSession.setActionHandler('pause', () => stopSession());
+                    navigator.mediaSession.setActionHandler('play', () => { });
+                }
+
+                // Wake Lock APIでスクリーンオフ防止
+                if ('wakeLock' in navigator) {
+                    navigator.wakeLock.request('screen').then(lock => {
+                        wakeLockRef.current = lock;
+                    }).catch(e => console.log('Wake Lock取得失敗:', e));
+                }
+
+                // Timer for Auto Mode & Auto Stop
+                setElapsed(0);
+                if (timerRef.current) clearInterval(timerRef.current);
+                timerRef.current = setInterval(() => {
+                    setElapsed(prev => {
+                        const next = prev + 1;
+                        if (duration > 0 && next >= duration) {
+                            stopSession();
+                            return duration;
+                        }
+                        return next;
+                    });
+                }, 1000);
+            };
+
+            const stopSession = () => {
+                setIsPlaying(false);
+                audioMgr.current.cleanup(); // Stops oscillators
+                mediaMgr.current.stop(); // Stop Local Media
+                if (timerRef.current) clearInterval(timerRef.current);
+
+                // Wake Lock解放
+                if (wakeLockRef.current) {
+                    wakeLockRef.current.release().catch(() => { });
+                    wakeLockRef.current = null;
+                }
+
+                // MediaSession クリア
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.metadata = null;
+                }
+            };
+
+            // Watch for volume changes
+            useEffect(() => {
+                // No fade, just update
+                audioMgr.current.setVolumes(masterVol, envVol, false);
+                mediaMgr.current.setVolume(envVol);
+            }, [masterVol, envVol]);
+
+            // Watch for Mode/Time changes to update frequency
+            useEffect(() => {
+                if (!isPlaying) return;
+                updateFrequency();
+            }, [currentMode, isPlaying, elapsed, duration]);
+
+            // Watch for Environment changes to update sound dynamically
+            useEffect(() => {
+                if (isPlaying) {
+                    updateEnvironmentSound();
+                }
+            }, [selectedEnv, envFiles]); // Update on env change or file change
+
+            const updateEnvironmentSound = () => {
+                if (selectedEnv === 'none') {
+                    mediaMgr.current.stop();
+                    audioMgr.current.stopNoise();
+                    return;
+                }
+
+                if (envFiles[selectedEnv] && envFiles[selectedEnv].url) {
+                    audioMgr.current.stopNoise();
+                    mediaMgr.current.play(envFiles[selectedEnv].url, envVol);
+                } else {
+                    // No file selected for this env slot
+                    mediaMgr.current.stop();
+                }
+            };
+
+            const updateFrequency = () => {
+                let targetFreq = 0;
+
+                if (currentMode.id === 'auto') {
+                    // Auto Mode: V-shape (60min base)
+                    // Phase 1 (0-20min/33%): 10Hz→6Hz アルファ→シータ導入
+                    // Phase 2 (20-40min/67%): 6Hz→4Hz 深いシータ到達
+                    // Phase 3 (40-50min/83%): 4Hz→14Hz シータ→SMR覚醒
+                    // Phase 4 (50-60min/100%): 14Hz→40Hz ガンマ覚醒
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.33;
+                    const p2 = totalSec * 0.67;
+                    const p3 = totalSec * 0.83;
+
+                    if (elapsed < p1) {
+                        targetFreq = 10 - (4 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 6 - (2 * ((elapsed - p1) / (p2 - p1)));
+                    } else if (elapsed < p3) {
+                        targetFreq = 4 + (10 * ((elapsed - p2) / (p3 - p2)));
+                    } else {
+                        targetFreq = 14 + (26 * ((elapsed - p3) / (totalSec - p3)));
+                    }
+                } else if (currentMode.id === 'sleep_flow') {
+                    // Sleep Flow (60min base)
+                    // Phase 1 (0-10min/17%): 10Hz→8Hz 不安解消
+                    // Phase 2 (10-25min/42%): 8Hz→7.83Hz シューマン共振で安定
+                    // Phase 3 (25-45min/75%): 7.83Hz→3Hz シータ→デルタ移行
+                    // Phase 4 (45-60min/100%): 3Hz→0.5Hz 深いデルタ睡眠
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.17;
+                    const p2 = totalSec * 0.42;
+                    const p3 = totalSec * 0.75;
+
+                    if (elapsed < p1) {
+                        targetFreq = 10 - (2 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 8 - (0.17 * ((elapsed - p1) / (p2 - p1)));
+                    } else if (elapsed < p3) {
+                        targetFreq = 7.83 - (4.83 * ((elapsed - p2) / (p3 - p2)));
+                    } else {
+                        targetFreq = 3 - (2.5 * ((elapsed - p3) / (totalSec - p3)));
+                    }
+
+                } else if (currentMode.id === 'deep_meditation_flow') {
+                    // Meditation Flow (60min base)
+                    // Phase 1 (0-6min/10%): 12Hz→10Hz 導入
+                    // Phase 2 (6-24min/40%): 10Hz→4Hz シータ波へ深化
+                    // Phase 3 (24-48min/80%): 4Hz維持 深い瞑想ホールド
+                    // Phase 4 (48-60min/100%): 4Hz→40Hz ガンマ覚醒
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.10;
+                    const p2 = totalSec * 0.40;
+                    const p3 = totalSec * 0.80;
+
+                    if (elapsed < p1) {
+                        targetFreq = 12 - (2 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 10 - (6 * ((elapsed - p1) / (p2 - p1)));
+                    } else if (elapsed < p3) {
+                        targetFreq = 4;
+                    } else {
+                        targetFreq = 4 + (36 * ((elapsed - p3) / (totalSec - p3)));
+                    }
+
+                } else if (currentMode.id === 'refresh_flow') {
+                    // Refresh Flow (60min base)
+                    // Phase 1 (0-6min/10%): 14Hz→7.83Hz 急速低下
+                    // Phase 2 (6-36min/60%): 7.83Hz維持 シューマン共振で回復
+                    // Phase 3 (36-51min/85%): 7.83Hz→10Hz 緩やかな浮上
+                    // Phase 4 (51-60min/100%): 10Hz→14Hz SMRで覚醒
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.10;
+                    const p2 = totalSec * 0.60;
+                    const p3 = totalSec * 0.85;
+
+                    if (elapsed < p1) {
+                        targetFreq = 14 - (6.17 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 7.83;
+                    } else if (elapsed < p3) {
+                        targetFreq = 7.83 + (2.17 * ((elapsed - p2) / (p3 - p2)));
+                    } else {
+                        targetFreq = 10 + (4 * ((elapsed - p3) / (totalSec - p3)));
+                    }
+                } else if (currentMode.id === 'power_focus_flow') {
+                    // Power Focus (60min base)
+                    // Phase 1 (0-6min/10%): 10Hz→14Hz ウォームアップ
+                    // Phase 2 (6-24min/40%): 14Hz維持 SMR安定
+                    // Phase 3 (24-60min/100%): 14Hz→40Hz ガンマ上昇
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.10;
+                    const p2 = totalSec * 0.40;
+
+                    if (elapsed < p1) {
+                        targetFreq = 10 + (4 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 14;
+                    } else {
+                        targetFreq = 14 + (26 * ((elapsed - p2) / (totalSec - p2)));
+                    }
+                } else if (currentMode.id === 'pain_relief_flow') {
+                    // Pain Relief Flow (60min base)
+                    // Phase 1 (0-10min/17%): 10Hz→8Hz リラックス導入 - 筋緊張の緩和
+                    // Phase 2 (10-20min/33%): 8Hz→4Hz エンドルフィン分泌促進
+                    // Phase 3 (20-45min/75%): 4Hz維持 深い鎮痛ホールド
+                    // Phase 4 (45-60min/100%): 4Hz→10Hz 回復・覚醒へ
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.17;
+                    const p2 = totalSec * 0.33;
+                    const p3 = totalSec * 0.75;
+
+                    if (elapsed < p1) {
+                        targetFreq = 10 - (2 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 8 - (4 * ((elapsed - p1) / (p2 - p1)));
+                    } else if (elapsed < p3) {
+                        targetFreq = 4;
+                    } else {
+                        targetFreq = 4 + (6 * ((elapsed - p3) / (totalSec - p3)));
+                    }
+                } else if (currentMode.id === 'happy_flow') {
+                    // Happy Flow (60min base)
+                    // Phase 1 (0-10min/17%): 10Hz→12.5Hz リラックスから幸福感へ
+                    // Phase 2 (10-25min/42%): 12.5Hz→15Hz 幸福感を高めて活力へ
+                    // Phase 3 (25-45min/75%): 15Hz維持 ポジティブな活力ホールド
+                    // Phase 4 (45-60min/100%): 15Hz→10Hz 穏やかな幸福感で安定
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.17;
+                    const p2 = totalSec * 0.42;
+                    const p3 = totalSec * 0.75;
+
+                    if (elapsed < p1) {
+                        targetFreq = 10 + (2.5 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 12.5 + (2.5 * ((elapsed - p1) / (p2 - p1)));
+                    } else if (elapsed < p3) {
+                        targetFreq = 15;
+                    } else {
+                        targetFreq = 15 - (5 * ((elapsed - p3) / (totalSec - p3)));
+                    }
+                } else if (currentMode.id === 'peace_flow') {
+                    // Peace Flow (60min base)
+                    // Phase 1 (0-10min/17%): 10Hz→8.5Hz アルファ波で穏やかに沈静
+                    // Phase 2 (10-25min/42%): 8.5Hz→7.25Hz シューマン-調和領域へ
+                    // Phase 3 (25-45min/75%): 7.25Hz→6.68Hz 深い平安・調和の周波数でホールド
+                    // Phase 4 (45-60min/100%): 6.68Hz→8.5Hz やすらぎを保ったまま穏やかに戻る
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.17;
+                    const p2 = totalSec * 0.42;
+                    const p3 = totalSec * 0.75;
+
+                    if (elapsed < p1) {
+                        targetFreq = 10 - (1.5 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 8.5 - (1.25 * ((elapsed - p1) / (p2 - p1)));
+                    } else if (elapsed < p3) {
+                        targetFreq = 7.25 - (0.57 * ((elapsed - p2) / (p3 - p2)));
+                    } else {
+                        targetFreq = 6.68 + (1.82 * ((elapsed - p3) / (totalSec - p3)));
+                    }
+                } else {
+                    targetFreq = currentMode.target;
+                }
+
+                // Clamp
+                if (targetFreq > 40) targetFreq = 40;
+                if (targetFreq < 0.5) targetFreq = 0.5;
+
+                audioMgr.current.setBinaural(CARRIER_FREQ, targetFreq);
+                return targetFreq; // Return for display
+            };
+
+            // Current Frequency for display
+            const [currentFreq, setCurrentFreq] = useState(0);
+
+            // Update freq display
+            useEffect(() => {
+                if (!isPlaying) { setCurrentFreq(0); return; }
+                const interval = setInterval(() => {
+                    // Recalculate for display
+                    let f = currentMode.target === 'variable' ? currentFreq : currentMode.target;
+                    setCurrentFreq(f);
+                }, 1000);
+                return () => clearInterval(interval);
+            }, [isPlaying, currentMode]);
+
+            // Override updateFrequency to also set currentFreq
+            const origUpdateFrequency = updateFrequency;
+            const updateFrequencyWithDisplay = () => {
+                const freq = updateFrequency();
+                if (freq !== undefined) setCurrentFreq(parseFloat(freq) || 0);
+            };
+
+            // Detailed Descriptions
+            const getModeDetail = (id) => {
+                switch (id) {
+                    case 'auto': return "最初はアルファ波でリラックスし、徐々にシータ波で沈静化。最後にガンマ波でスッキリと覚醒する全自動コースです。";
+                    case 'sleep_flow': return "不安を取り除く8Hzからスタートし、シューマン共振(7.83Hz)でストレスを解消。その後深い睡眠のデルタ波へ誘う安眠フローです。";
+                    case 'deep_meditation_flow': return "日常の意識状態から深い瞑想状態（シータ波4Hz）へ誘導し、最後にガンマ波40Hzで至高の覚醒体験をもたらす瞑想フローです。";
+                    case 'refresh_flow': return "短時間で脳をシューマン共振で急速に休めた後、SMR波でシャキッと目覚める。パワーナップやリフレッシュに最適です。";
+                    case 'power_focus_flow': return "SMR波(14Hz)で集中の基礎を作り、そこからガンマ波(40Hz)へ滑らかに移行。『ゾーン』に入る最強の集中フローです。";
+                    case 'happy_flow': return "アルファ波(10Hz)で心を落ち着かせた後、SMR波(12.5Hz)で幸福感を引き出し、低ベータ波(15Hz)で明るい活力を最大化。最後にアルファ波に戻り、ポジティブな気分を定着させるハッピーフローです。";
+                    case 'happiness': return "12.5HzのSMR波。セロトニンやドーパミンの分泌を促し、自然な幸福感と心の安定をもたらします。気分が沈んだ時や、前向きな気持ちになりたい時に。";
+                    case 'vitality': return "15Hzの低ベータ波。脳を程よく覚醒させ、明るく前向きなエネルギーを引き出します。朝の目覚めや気分のリフレッシュに最適です。";
+                    case 'euphoria': return "11Hzのアルファ-SMR境界波。深いリラックスと程よい覚醒が合わさり、多幸感と喜びを感じやすい状態へ導きます。感謝の瞑想やポジティブシンキングのお供に。";
+                    case 'pain_relief_flow': return "まずアルファ波(10Hz)で筋緊張を緩和し、次に4Hzのシータ波でエンドルフィンの分泌を促進。深い鎮痛状態をキープした後、ゆるやかにアルファ波に戻って回復を促す、痛みの緩和に特化したフローです。";
+                    case 'pain_relief': return "4Hzのシータ波。脳内エンドルフィン（天然の鎮痛物質）の分泌を促進し、痛みの感覚を和らげます。慢性痛や急性痛の緩和に。";
+                    case 'inflammation': return "2Hzの低デルタ波。深いリラックス状態で体の炎症反応を鎮静化し、自然治癒力を高めます。関節痛や筋肉痛の緩和に。";
+                    case 'headache': return "10Hzのアルファ波。頭部の血管収縮を緩和し、脳のリラックス状態を促すことで頭痛・偏頭痛の症状を軽減します。";
+                    case 'muscle_relax': return "5Hzの低シータ波。筋肉の緊張をやわらげ、血流を改善します。肩こり、腰痛、運動後の筋肉痛の緩和に。";
+                    case 'focus': return "40Hzのガンマ波。論理的思考、記憶の結合、高度な集中力を発揮したい時に。";
+                    case 'learning': return "14HzのSMR波。リラックスしたままの集中状態。学習や読書、事務作業の効率化に。";
+                    case 'creativity': return "7Hzのシータ波。まどろみの中で閃きを得たり、創造的な活動をする時に。";
+                    case 'lucid': return "25Hzのハイ・ベータ波。明晰夢の練習や、意識をはっきりと保ちたい時に。";
+                    case 'relax': return "10Hzのアルファ波。心身をリラックスさせ、ストレスを軽減したい時に。";
+                    case 'peace_flow': return "アルファ波(10Hz)から穏やかに沈静し、シューマン共振(7.83Hz)と調和の周波数(6.68Hz)の間を通過。深い平安と内なる静けさを味わった後、やすらぎを保ったまま穏やかに戻るフローです。";
+                    case 'peace': return "8.5Hzの低アルファ波。不安や雑念を手放し、心の奠いた平安な状態へ導きます。寝る前のリラックスや、心を落ち着かせたい時に。";
+                    case 'inner_silence': return "7.25Hzのシューマン-調和境界波。地球の定常波(7.83Hz)と調和周波数(6.68Hz)の中間に位置する周波数です。外の喧騒から離れ、内なる静寂と深い平和を感じる状態へ導きます。";
+                    case 'stress': return "7.83Hzのシューマン共振。地球の定常波と同調し、自律神経のバランスを整えます。";
+                    case 'autonomic': return "6.68Hzの調和周波数。シューマン共振(7.83Hz)より深い意識状態へ導き、脳波をシータ波領域に同調させます。交感神経の過緊張を解き、心拍・血流を安定させ、『ゼロポイント・フィールド』への内的アクセスを促進。思考のノイズを静め、自己治癒力を引き出す根源的な地球の振動です。";
+                    case 'anxiety': return "8Hzの低アルファ波。不安を取り除き、安心感を得たい時に。";
+                    case 'meditation': return "6Hzの低シータ波。深い内観、マインドフルネス瞑想の補助に。";
+                    case 'sleep': return "1Hzのデルタ波。夢を見ない深い睡眠（ノンレム睡眠）を促します。";
+                    default: return "";
+                }
+            };
+
+            // Toast notification state
+            const [toastMsg, setToastMsg] = useState('');
+            const toastTimer = useRef(null);
+            const showToast = (msg) => {
+                setToastMsg(msg);
+                if (toastTimer.current) clearTimeout(toastTimer.current);
+                toastTimer.current = setTimeout(() => setToastMsg(''), 2200);
+            };
+
+            // Save settings to localStorage when they change
+            const isInitialMount = useRef(true);
+            useEffect(() => {
+                // ロード完了前は保存しない（レースコンディション防止）
+                if (!loadCompleteRef.current) {
+                    isInitialMount.current = false;
+                    return;
+                }
+                const config = { masterVol, envVol, duration, selectedEnv, currentModeId: currentMode.id };
+                localStorage.setItem('gamma_config', JSON.stringify(config));
+                // Show toast only after initial load
+                if (isInitialMount.current) {
+                    isInitialMount.current = false;
+                } else {
+                    showToast('✅ 設定を保存しました');
+                }
+            }, [masterVol, envVol, duration, selectedEnv, currentMode]);
+
+            // Export settings as JSON file for backup
+            const exportSettings = () => {
+                const config = {
+                    masterVol, envVol, duration, selectedEnv, currentModeId: currentMode.id,
+                    _app: 'GammaWaveBooster',
+                    _version: 1,
+                    _exportedAt: new Date().toISOString()
+                };
+                const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `gamma_booster_settings_${new Date().toISOString().slice(0, 10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('📦 バックアップを保存しました');
+            };
+
+            // Import settings from JSON file (サニタイズ済み)
+            const importSettings = (file) => {
+                if (!file) return;
+                // ファイルサイズチェック（1MB上限）
+                if (file.size > 1024 * 1024) {
+                    showToast('⚠️ ファイルが大きすぎます');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const config = JSON.parse(e.target.result);
+                        if (typeof config !== 'object' || config === null || config._app !== 'GammaWaveBooster') {
+                            showToast('⚠️ 無効なファイルです');
+                            return;
+                        }
+                        // サニタイズして適用
+                        if (config.masterVol !== undefined) setMasterVol(sanitizeNumber(config.masterVol, 0, 100, 20));
+                        if (config.envVol !== undefined) setEnvVol(sanitizeNumber(config.envVol, 0, 100, 20));
+
+                        if (config.duration) setDuration(sanitizeNumber(config.duration, 60, 7200, 3600));
+                        if (config.selectedEnv) setSelectedEnv(sanitizeString(config.selectedEnv, allowedEnvIds, 'none'));
+
+                        if (config.currentModeId) {
+                            const safeId = sanitizeString(config.currentModeId, allowedModeIds, null);
+                            if (safeId) {
+                                const found = MODES.find(m => m.id === safeId);
+                                if (found) setCurrentMode(found);
+                            }
+                        }
+                        showToast('✅ 設定を復元しました');
+                    } catch (err) {
+                        showToast('⚠️ ファイルの読み込みに失敗しました');
+                    }
+                };
+                reader.readAsText(file);
+            };
+
+            // Format Time
+            const formatTime = (sec) => {
+                const m = Math.floor(sec / 60).toString().padStart(2, '0');
+                const s = (sec % 60).toString().padStart(2, '0');
+                return `${m}:${s}`;
+            };
+
+            // Get frequency label for display
+            const getFreqLabel = () => {
+                if (currentMode.target === 'variable') {
+                    return isPlaying ? `${CARRIER_FREQ}Hz ± 変動中` : '自動変動モード';
+                }
+                return `${CARRIER_FREQ}Hz + ${currentMode.target}Hz`;
+            };
+
+            // Settings Modal State
+            const [showSettings, setShowSettings] = useState(false);
+            const importFileRef = useRef(null);
+            const [selectedGroup, setSelectedGroup] = useState(MODE_GROUPS[0].id);
+
+            // Get modes for the currently selected group (plain calculation, not useMemo)
+            const currentGroupModes = (() => {
+                const group = MODE_GROUPS.find(g => g.id === selectedGroup);
+                return group ? group.modes : MODE_GROUPS[0].modes;
+            })();
+
+            // Auto-sync group tab when mode changes (e.g. from config restore)
+            useEffect(() => {
+                const ownerGroup = MODE_GROUPS.find(g => g.modes.some(m => m.id === currentMode.id));
+                if (ownerGroup && ownerGroup.id !== selectedGroup) {
+                    setSelectedGroup(ownerGroup.id);
+                }
+            }, [currentMode.id]);
+
+            return (
+                <div className="relative min-h-screen flex flex-col items-center justify-center p-4">
+
+                    {/* Background Aura - Primary */}
+                    <div
+                        className="aura w-96 h-96 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 transition-colors duration-1000"
+                        style={{ backgroundColor: isPlaying ? currentMode.color : '#334155' }}
+                    ></div>
+                    {/* Background Aura - Secondary (offset for depth) */}
+                    <div
+                        className="aura-secondary w-80 h-80 top-[40%] left-[55%] -translate-x-1/2 -translate-y-1/2 transition-colors duration-[2000ms]"
+                        style={{ backgroundColor: isPlaying ? currentMode.color : '#1e293b', opacity: 0.3 }}
+                    ></div>
+
+                    {/* Glass Container */}
+                    <div className="glass-panel relative w-full max-w-md rounded-3xl p-6 z-10 flex flex-col gap-5">
+
+                        {/* Header */}
+                        <header className="flex justify-between items-center">
+                            <div>
+                                <h1 className="text-lg font-bold tracking-tight text-white/90">
+                                    🧠 脳波ブースター
+                                </h1>
+                                <p className="text-[10px] text-white/30 tracking-wider">Gamma Wave Booster Pro</p>
+                            </div>
+                            <button onClick={() => setShowSettings(!showSettings)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+                                <IconSettings />
+                            </button>
+                        </header>
+
+                        {/* Timer Display */}
+                        <div className="flex flex-col items-center justify-center py-3">
+                            <div className="relative">
+                                <div className="text-6xl font-mono font-thin tracking-wider text-white">
+                                    {isPlaying ? formatTime(Math.max(0, duration - elapsed)) : formatTime(duration)}
+                                </div>
+                                {isPlaying && (
+                                    <div className="absolute -inset-4 rounded-full border border-white/10 pulse-ring pointer-events-none"></div>
+                                )}
+                            </div>
+
+                            {/* Duration Selectors */}
+                            {!isPlaying && (
+                                <div className="flex flex-col items-center mt-4 w-full">
+                                    <span className="text-[10px] uppercase text-white/40 tracking-widest mb-2">時間設定</span>
+                                    <div className="flex gap-2">
+                                        {[10, 20, 30, 60, 90].map(m => (
+                                            <button
+                                                key={m}
+                                                onClick={() => setDuration(m * 60)}
+                                                className={`text-sm px-3 py-1.5 rounded-lg border transition-all duration-300 ${duration === m * 60
+                                                    ? 'bg-white text-black font-bold border-white shadow-[0_0_20px_rgba(255,255,255,0.2)]'
+                                                    : 'border-white/15 text-white/50 hover:bg-white/10 hover:text-white hover:border-white/30'
+                                                    }`}
+                                            >
+                                                {m}分
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Current Mode Label */}
+                            <div className="text-sm font-semibold tracking-wide pt-3" style={{ color: currentMode.color }}>
+                                {currentMode.label}
+                                {currentMode.flow && <span className="badge-flow">フロー</span>}
+                            </div>
+                            <div className="text-xs text-white/30 mt-0.5">
+                                {getFreqLabel()}
+                            </div>
+                        </div>
+
+                        {/* Mode Info Panel - Always visible for selected mode */}
+                        <div className="mode-info rounded-xl p-3 text-xs text-white/70 leading-relaxed">
+                            <div className="flex items-start gap-2">
+                                <span className="text-base mt-0.5" style={{ color: currentMode.color }}>●</span>
+                                <span>{getModeDetail(currentMode.id)}</span>
+                            </div>
+                        </div>
+
+                        {/* Group Selector */}
+                        <div>
+                            <label className="text-[10px] uppercase text-white/40 tracking-widest mb-2 block">カテゴリ</label>
+                            <div className="group-tabs">
+                                {MODE_GROUPS.map(group => (
+                                    <button
+                                        key={group.id}
+                                        onClick={() => setSelectedGroup(group.id)}
+                                        className={`group-tab ${selectedGroup === group.id ? 'active' : ''}`}
+                                        style={selectedGroup === group.id ? { borderColor: group.color + '60', boxShadow: `0 2px 12px ${group.color}20` } : {}}
+                                    >
+                                        {group.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Mode Selector (filtered by group) */}
+                        <div>
+                            <label className="text-[10px] uppercase text-white/40 tracking-widest mb-2 block">モード選択</label>
+                            <div className="grid grid-cols-1 gap-1.5 max-h-40 overflow-y-auto pr-1">
+                                {currentGroupModes.map(mode => (
+                                    <button
+                                        key={mode.id}
+                                        onClick={() => setCurrentMode(mode)}
+                                        className={`p-2.5 rounded-xl text-left transition-all duration-200 border ${currentMode.id === mode.id
+                                            ? 'bg-white/10 border-white/30 shadow-lg shadow-black/20'
+                                            : 'border-transparent hover:bg-white/5 text-white/60 hover:border-white/10'
+                                            }`}
+                                    >
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: mode.color }}></span>
+                                            <span className="text-xs font-semibold" style={{ color: currentMode.id === mode.id ? mode.color : undefined }}>{mode.label}</span>
+                                            {mode.flow && <span className="badge-flow">フロー</span>}
+                                        </div>
+                                        <div className="text-[10px] text-white/35 mt-0.5 pl-3.5">{mode.desc}</div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Environmental Sound Selector */}
+                        <div className="flex flex-col gap-2">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] uppercase text-white/40 tracking-widest">環境音</label>
+                                <span className="text-[9px] text-white/25">※ バックグラウンド再生対応</span>
+                            </div>
+                            <div className="grid grid-cols-4 gap-1.5">
+                                {ENV_OPTIONS.map(opt => {
+                                    const isBuiltIn = (opt.id === 'stream' || opt.id === 'ocean');
+                                    const isCustom = opt.id.startsWith('custom');
+                                    const fileInfo = envFiles[opt.id];
+                                    const hasFile = fileInfo && fileInfo.name;
+                                    const customLabel = hasFile ? fileInfo.name.replace(/\.[^.]+$/, '').slice(0, 8) : opt.label;
+                                    const isDisabled = (isCustom || isBuiltIn) && !hasFile && opt.id !== 'none';
+                                    return (
+                                        <button
+                                            key={opt.id}
+                                            onClick={() => !isDisabled && setSelectedEnv(opt.id)}
+                                            className={`py-1.5 px-1 rounded-lg text-[10px] font-medium border transition-all duration-200 truncate ${selectedEnv === opt.id
+                                                ? 'bg-white/10 border-white/25 text-white shadow-sm'
+                                                : isDisabled
+                                                    ? 'border-white/5 text-white/15 cursor-default'
+                                                    : 'border-white/5 text-white/35 hover:bg-white/5 hover:text-white/60'
+                                                }`}
+                                            title={hasFile ? envFiles[opt.id].name : opt.label}
+                                        >
+                                            {opt.id === 'none' ? opt.label : (hasFile ? `🎵 ${customLabel}` : `${opt.label}`)}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Volume Mixers */}
+                        <div className="space-y-3">
+                            <div>
+                                <div className="flex justify-between text-[10px] text-white/50 mb-1">
+                                    <span>🎧 脳波誘導 音量</span>
+                                    <span className="font-mono">{masterVol}%</span>
+                                </div>
+                                <input
+                                    type="range" min="0" max="100"
+                                    value={masterVol}
+                                    onChange={(e) => setMasterVol(Number(e.target.value))}
+                                    className="w-full"
+                                />
+                            </div>
+                            <div>
+                                <div className="flex justify-between text-[10px] text-white/50 mb-1">
+                                    <span>🌿 環境音 音量</span>
+                                    <span className="font-mono">{envVol}%</span>
+                                </div>
+                                <input
+                                    type="range" min="0" max="100"
+                                    value={envVol}
+                                    onChange={(e) => setEnvVol(Number(e.target.value))}
+                                    className="w-full"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Main Action Button */}
+                        <div className="flex justify-center pt-1 pb-2">
+                            <div className="relative">
+                                {isPlaying && (
+                                    <div className="absolute inset-0 rounded-full pulse-ring" style={{ borderColor: currentMode.color, borderWidth: '2px', borderStyle: 'solid' }}></div>
+                                )}
+                                <button
+                                    onClick={togglePlay}
+                                    className={`relative btn-glow p-5 rounded-full transition-all duration-500 transform hover:scale-105 active:scale-95 ${isPlaying ? 'text-white' : 'bg-white/10 text-white'
+                                        }`}
+                                    style={{
+                                        boxShadow: isPlaying ? `0 0 40px ${currentMode.color}50, inset 0 0 20px ${currentMode.color}20` : '0 0 20px rgba(255,255,255,0.05)',
+                                        border: `2px solid ${isPlaying ? currentMode.color : 'rgba(255,255,255,0.1)'}`,
+                                        background: isPlaying ? `radial-gradient(circle, ${currentMode.color}30 0%, transparent 70%)` : undefined
+                                    }}
+                                >
+                                    {isPlaying ? <IconPause /> : <IconPlay />}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Save Toast */}
+                    {toastMsg && (
+                        <div className="save-toast">
+                            <div className="px-5 py-2.5 rounded-full text-sm font-semibold text-white shadow-2xl"
+                                style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.9) 0%, rgba(6,182,212,0.9) 100%)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.2)' }}>
+                                {toastMsg}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Settings Modal (Portal) */}
+                    <SettingsModal
+                        show={showSettings}
+                        onClose={() => setShowSettings(false)}
+                        envFiles={envFiles}
+                        setEnvFiles={setEnvFiles}
+                        onExport={exportSettings}
+                        onImport={importSettings}
+                        customFolderFiles={customFolderFiles}
+                        setCustomFolderFiles={setCustomFolderFiles}
+                    />
+
+
+
+                    {/* Debug Console (Hidden by default, toggle with 'D') */}
+                    <DebugConsole />
+                </div>
+            );
+        }
+
+        // --- バックグラウンド再生維持: visibilitychange対策 ---
+        document.addEventListener('visibilitychange', () => {
+            // ページが非表示になった時、AudioContextを再開する
+            if (document.hidden) {
+                // DOMが非表示でもAudioContextを維持
+                const contexts = document.querySelectorAll('video, audio');
+                contexts.forEach(el => {
+                    if (el.paused && el.dataset.wasPlaying === 'true') {
+                        el.play().catch(() => { });
+                    }
+                });
+            }
+        });
+
+        // メディア要素の再生状態をトラッキング
+        document.addEventListener('play', (e) => {
+            if (e.target.tagName === 'VIDEO' || e.target.tagName === 'AUDIO') {
+                e.target.dataset.wasPlaying = 'true';
+            }
+        }, true);
+
+        document.addEventListener('pause', (e) => {
+            if (e.target.tagName === 'VIDEO' || e.target.tagName === 'AUDIO') {
+                // ユーザーが意図的に停止した場合のみフラグを消す
+                if (!document.hidden) {
+                    e.target.dataset.wasPlaying = 'false';
+                }
+            }
+        }, true);
+
+        // --- Debug Console Component ---
+        const DebugConsole = () => {
+            const [visible, setVisible] = useState(false);
+            const [logs, setLogs] = useState([]);
+
+            useEffect(() => {
+                const handler = (e) => {
+                    if (e.key === 'd' || e.key === 'D') setVisible(prev => !prev);
+                };
+                window.addEventListener('keydown', handler);
+
+                const updateLogs = () => setLogs([...debugLogs]);
+                window.addEventListener('debug-update', updateLogs);
+
+                return () => {
+                    window.removeEventListener('keydown', handler);
+                    window.removeEventListener('debug-update', updateLogs);
+                };
+            }, []);
+
+            if (!visible) return <div className="fixed bottom-0 right-0 p-2 text-xs text-white/20 cursor-pointer" onClick={() => setVisible(true)}>Debug (Press 'D')</div>;
+
+            return (
+                <div className="fixed bottom-0 left-0 right-0 h-48 bg-black/90 text-green-400 font-mono text-xs overflow-y-auto p-2 z-[10000] border-t border-white/20">
+                    <div className="flex justify-between mb-1 sticky top-0 bg-black/90">
+                        <span>Debug Console</span>
+                        <button onClick={() => setVisible(false)}>X</button>
+                    </div>
+                    {logs.map((l, i) => <div key={i}>{l}</div>)}
+                </div>
+            );
+        };
+
+        // --- Error Boundary for debugging ---
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null, errorInfo: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+            componentDidCatch(error, errorInfo) {
+                this.setState({ errorInfo });
+                console.error('React Error Boundary caught:', error, errorInfo);
+            }
+            render() {
+                if (this.state.hasError) {
+                    return React.createElement('div', {
+                        style: { padding: '40px', background: '#1a0000', color: '#ff6b6b', minHeight: '100vh', fontFamily: 'monospace' }
+                    },
+                        React.createElement('h1', null, '⚠️ アプリケーションエラー'),
+                        React.createElement('pre', { style: { whiteSpace: 'pre-wrap', fontSize: '14px', marginTop: '20px', color: '#ffaaaa' } },
+                            this.state.error && this.state.error.toString()
+                        ),
+                        React.createElement('pre', { style: { whiteSpace: 'pre-wrap', fontSize: '12px', marginTop: '10px', color: '#ff8888' } },
+                            this.state.errorInfo && this.state.errorInfo.componentStack
+                        ),
+                        React.createElement('button', {
+                            onClick: () => { localStorage.removeItem('gamma_config'); window.location.reload(); },
+                            style: { marginTop: '20px', padding: '10px 20px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' }
+                        }, '🔄 設定をリセットして再読み込み')
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ErrorBoundary><App /></ErrorBoundary>);
+    </script>
+
+    <!-- Service Worker 登録 -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('SW registered:', reg.scope))
+                    .catch(err => console.log('SW registration failed:', err));
+            });
+        }
+    </script>
+
+</body>
+
+</html>

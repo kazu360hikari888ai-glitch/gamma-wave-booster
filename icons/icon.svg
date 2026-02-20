@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="50%" style="stop-color:#1e1b4b"/>
+      <stop offset="100%" style="stop-color:#0f172a"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#a855f7"/>
+      <stop offset="50%" style="stop-color:#06b6d4"/>
+      <stop offset="100%" style="stop-color:#14b8a6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#a855f7;stop-opacity:0.4"/>
+      <stop offset="100%" style="stop-color:#a855f7;stop-opacity:0"/>
+    </radialGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- Glow -->
+  <circle cx="256" cy="230" r="160" fill="url(#glow)"/>
+  <!-- Brain Icon -->
+  <g transform="translate(256,210)" fill="none" stroke="url(#wave)" stroke-width="8" stroke-linecap="round">
+    <!-- Left hemisphere -->
+    <path d="M-10,-60 C-50,-60 -80,-35 -80,0 C-80,25 -65,40 -50,45 C-55,55 -45,70 -30,70 C-20,70 -12,60 -10,50"/>
+    <path d="M-10,-60 C-10,-80 -40,-85 -55,-65"/>
+    <path d="M-75,-10 C-90,-10 -95,15 -80,25"/>
+    <!-- Right hemisphere -->
+    <path d="M10,-60 C50,-60 80,-35 80,0 C80,25 65,40 50,45 C55,55 45,70 30,70 C20,70 12,60 10,50"/>
+    <path d="M10,-60 C10,-80 40,-85 55,-65"/>
+    <path d="M75,-10 C90,-10 95,15 80,25"/>
+    <!-- Center -->
+    <line x1="0" y1="-60" x2="0" y2="50"/>
+  </g>
+  <!-- Wave lines -->
+  <g fill="none" stroke="url(#wave)" stroke-width="5" stroke-linecap="round" opacity="0.8">
+    <path d="M80,340 Q130,310 170,340 Q210,370 256,340 Q300,310 340,340 Q380,370 430,340"/>
+    <path d="M80,380 Q130,350 170,380 Q210,410 256,380 Q300,350 340,380 Q380,410 430,380"/>
+    <path d="M110,420 Q155,395 195,420 Q235,445 270,420 Q310,395 350,420 Q385,445 410,420" opacity="0.5"/>
+  </g>
+  <!-- Text -->
+  <text x="256" y="478" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-family="sans-serif" font-size="28" font-weight="600">脳波ブースター</text>
+</svg>
