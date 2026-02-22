@@ -694,6 +694,73 @@
             </svg>
         );
 
+        // --- IndexedDB: 環境音ファイルの永続化 ---
+        // localStorageはファイル（Blobバイナリ）を保存できないため、IndexedDBを使用する
+        const AudioFileDB = (() => {
+            const DB_NAME = 'GammaBoosterAudio';
+            const STORE = 'envFiles';
+            const VERSION = 1;
+
+            function openDB() {
+                return new Promise((resolve, reject) => {
+                    const req = indexedDB.open(DB_NAME, VERSION);
+                    req.onupgradeneeded = e => {
+                        e.target.result.createObjectStore(STORE);
+                    };
+                    req.onsuccess = e => resolve(e.target.result);
+                    req.onerror = e => reject(e.target.error);
+                });
+            }
+
+            async function withDB(mode, fn) {
+                const db = await openDB();
+                try {
+                    return await new Promise((resolve, reject) => {
+                        const tx = db.transaction(STORE, mode);
+                        tx.onerror = e => reject(e.target.error);
+                        fn(tx.objectStore(STORE), resolve, reject);
+                    });
+                } finally {
+                    db.close();
+                }
+            }
+
+            return {
+                // Blob + ファイル名を保存
+                save(key, blob, name) {
+                    return withDB('readwrite', (store, resolve, reject) => {
+                        const req = store.put({ blob, name }, key);
+                        req.onsuccess = resolve;
+                        req.onerror = e => reject(e.target.error);
+                    }).catch(e => console.error('AudioFileDB.save:', e));
+                },
+                // 1エントリブ読み込み
+                load(key) {
+                    return withDB('readonly', (store, resolve, reject) => {
+                        const req = store.get(key);
+                        req.onsuccess = e => resolve(e.target.result || null);
+                        req.onerror = e => reject(e.target.error);
+                    }).catch(e => { console.error('AudioFileDB.load:', e); return null; });
+                },
+                // 複数エントリを一括読み込み
+                async loadAll(keys) {
+                    const results = {};
+                    await Promise.all(keys.map(async key => {
+                        results[key] = await this.load(key);
+                    }));
+                    return results;
+                },
+                // エントリ削除
+                delete(key) {
+                    return withDB('readwrite', (store, resolve, reject) => {
+                        const req = store.delete(key);
+                        req.onsuccess = resolve;
+                        req.onerror = e => reject(e.target.error);
+                    }).catch(e => console.error('AudioFileDB.delete:', e));
+                },
+            };
+        })();
+
         // --- Settings Modal Component (Portal) ---
         const SettingsModal = ({ show, onClose, envFiles, setEnvFiles, onExport, onImport, customFolderFiles, setCustomFolderFiles }) => {
             if (!show) return null;
@@ -703,6 +770,8 @@
                 const url = URL.createObjectURL(file);
                 if (envFiles[envId] && envFiles[envId].url) URL.revokeObjectURL(envFiles[envId].url);
                 setEnvFiles(prev => ({ ...prev, [envId]: { url, name: file.name } }));
+                // IndexedDBに保存（次回起動時に自動復元）
+                AudioFileDB.save(envId, file, file.name);
             };
 
             const handleFolderSelect = (envId, files) => {
@@ -717,12 +786,16 @@
                 const url = URL.createObjectURL(audioFiles[0]);
                 if (envFiles[envId] && envFiles[envId].url) URL.revokeObjectURL(envFiles[envId].url);
                 setEnvFiles(prev => ({ ...prev, [envId]: { url, name: audioFiles[0].name } }));
+                // IndexedDBに保存（次回起動時に自動復元）
+                AudioFileDB.save(envId, audioFiles[0], audioFiles[0].name);
             };
 
             const handleFolderFileSelect = (envId, file) => {
                 const url = URL.createObjectURL(file);
                 if (envFiles[envId] && envFiles[envId].url) URL.revokeObjectURL(envFiles[envId].url);
                 setEnvFiles(prev => ({ ...prev, [envId]: { url, name: file.name } }));
+                // IndexedDBに保存（次回起動時に自動復元）
+                AudioFileDB.save(envId, file, file.name);
             };
 
 
@@ -938,6 +1011,22 @@
                         }, 300);
                     }
                 });
+
+                // ─── IndexedDBから環境音ファイルを次の起動時に自動復元 ───
+                const ENV_KEYS = ['stream', 'ocean', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5'];
+                AudioFileDB.loadAll(ENV_KEYS).then(savedFiles => {
+                    const restored = {};
+                    for (const [key, data] of Object.entries(savedFiles)) {
+                        if (data && data.blob) {
+                            // Blobから再生可能なObject URLを生成
+                            const url = URL.createObjectURL(data.blob);
+                            restored[key] = { url, name: data.name };
+                        }
+                    }
+                    if (Object.keys(restored).length > 0) {
+                        setEnvFiles(prev => ({ ...prev, ...restored }));
+                    }
+                }).catch(e => console.error('AudioFileDB restore error:', e));
 
                 // ─── アプリ終了・バックグラウンド時の確実な保存 ───
                 // iOS PWA では beforeunload が発火しないため pagehide + visibilitychange を使用
