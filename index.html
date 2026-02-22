@@ -655,12 +655,24 @@
                         this._envFileBlobUrl = null;
                     }
 
-                    // <audio>要素を作成（AudioContextには接続しない）
-                    // こうすることでモバイルOSが「アクティブなメディア再生」とみなしバックグラウンドを許可する
-                    const audio = document.createElement('audio');
+                    // <video>要素をオーディオ代わりに使用する（モバイルバックグラウンド再生に最も強固）
+                    // こうすることでモバイルOSが「アクティブなメディア再生」とみなしやすくなる
+                    const audio = document.createElement('video');
                     audio.src = blobUrl;
                     audio.loop = true;
-                    audio.playsInline = true; // iOS向け
+                    audio.playsInline = true; // iOS/Androidバックグラウンド向け必須
+
+                    // DOMへの確実な追加（メディアセッションに維持させるために必須）
+                    audio.style.display = 'none';
+                    document.body.appendChild(audio);
+
+                    // --- バックグラウンド移行時などOSの強制停止(pause)に抵抗して即座に再開させるハック ---
+                    audio.addEventListener('pause', () => {
+                        // this.envFileElementが設定し直されていない/破棄されていないのにpauseされたなら、OSの強制遮断
+                        if (this.envFileElement === audio && audio.src) {
+                            audio.play().catch(e => console.warn('background auto-play prevented', e));
+                        }
+                    });
 
                     // 最新の環境音ボリュームを適用
                     audio.volume = (this._currentEnvVol !== undefined ? this._currentEnvVol : 50) / 100;
