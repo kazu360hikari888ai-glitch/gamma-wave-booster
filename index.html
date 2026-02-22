@@ -462,8 +462,12 @@
                 this.oscR = null;
                 this.cameraNoiseNode = null; // For pink/brown noise
 
-                this.envFileNode = null;    // 環境音ファイル再生ノード
-                this._envFileAbort = null;  // デコード中断フラグ
+                // 環境音ファイル再生 (createMediaElementSource方式)
+                this.envFileElement = null; // <audio>要素
+                this.envFileMediaSource = null; // MediaElementAudioSourceNode
+                this._envFileBlobUrl = null; // Blobから生成したObject URL（廃棄用）
+                this.envFileNode = null; // unused – kept for compat
+                this._envFileAbort = null; // unused – kept for compat
             }
 
             init() {
@@ -633,55 +637,75 @@
                 }
             }
 
-            // ─── 環境音ファイル: AudioContextバッファデコード方式 ───
-            // sourceはBlob/FileまたはURL文字列を受け入れる。
-            // Blobは.arrayBuffer()で直接取得するためfetch()+CSPに依存しない。
-            async playEnvFile(source) {
+            // ─── 環境音ファイル: createMediaElementSource方式 ───
+            // <audio>要素をAudioContextにMediaElementAudioSourceNodeで接続する。
+            // バイノーラルビートと同じAudioContextセッション経由なのでバックグラウンドでも止まらない。
+            // decodeAudioData方式と差異:
+            //   ✓ 同期実行→iOSユーザージェスチャーコンテキスト内でplay()を呼び出せる
+            //   ✓ ストリーミング処理→大容量ファイルでもメモリ不足にならない
+            playEnvFile(source) {
                 this.stopEnvFile();
                 if (!this.ctx || !source) return;
 
-                // デコード中に stopEnvFile が呼ばれたときのキャンセルフラグ
-                let aborted = false;
-                const abort = () => { aborted = true; };
-                this._envFileAbort = abort;
-
                 try {
-                    let arrayBuffer;
+                    // BlobURLに変換（Blob/Fileの場合）
+                    let blobUrl;
                     if (source instanceof Blob) {
-                        // Blob/Fileを直接ArrayBufferに変換（fetch不要、CSPも無関係）
-                        arrayBuffer = await source.arrayBuffer();
+                        blobUrl = URL.createObjectURL(source);
+                        this._envFileBlobUrl = blobUrl; // 将来のrevokeObjectURL用
                     } else {
-                        // URL文字列の場合は fetch で取得（フォールバック）
-                        const response = await fetch(source);
-                        arrayBuffer = await response.arrayBuffer();
+                        blobUrl = source;
+                        this._envFileBlobUrl = null;
                     }
-                    if (aborted) return;
 
-                    // AudioBufferにデコード
-                    const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
-                    if (aborted) return;
+                    // <audio>要素を作成しAudioContextにMediaElementSourceでルーティング
+                    // （※モバイルでのバックグラウンド安定のため video / playsInline を使用・DOM追加）
+                    const audio = document.createElement('video');
+                    audio.src = blobUrl;
+                    audio.loop = true;
+                    audio.preload = 'auto';
+                    audio.playsInline = true;
+                    audio.style.display = 'none';
+                    document.body.appendChild(audio);
 
-                    this.envFileNode = this.ctx.createBufferSource();
-                    this.envFileNode.buffer = audioBuffer;
-                    this.envFileNode.loop = true;
-                    this.envFileNode.connect(this.envGain);
-                    this.envFileNode.start();
-                    this._envFileAbort = null;
+                    // AudioContext経由に接続 → バックグラウンド再生を維持
+                    const mediaSource = this.ctx.createMediaElementSource(audio);
+                    mediaSource.connect(this.envGain);
+
+                    // 再生開始（ユーザージェスチャーコンテキスト内のためiOSでも有効）
+                    audio.play().catch(e => console.error('環境音play error:', e));
+
+                    this.envFileElement = audio;
+                    this.envFileMediaSource = mediaSource;
                 } catch (e) {
-                    if (!aborted) console.error('playEnvFile error:', e);
+                    console.error('playEnvFile error:', e);
                 }
             }
 
             stopEnvFile() {
-                // デコード中ならキャンセル
-                if (this._envFileAbort) {
-                    this._envFileAbort();
-                    this._envFileAbort = null;
-                }
+                // 撤回: 不要なアカウントになったフラグ属性も一応クリア
+                this._envFileAbort = null;
                 if (this.envFileNode) {
                     try { this.envFileNode.stop(); } catch (e) { }
                     try { this.envFileNode.disconnect(); } catch (e) { }
                     this.envFileNode = null;
+                }
+                // MediaElementSourceの、クリーンアップ
+                if (this.envFileMediaSource) {
+                    try { this.envFileMediaSource.disconnect(); } catch (e) { }
+                    this.envFileMediaSource = null;
+                }
+                if (this.envFileElement) {
+                    try {
+                        this.envFileElement.pause();
+                        this.envFileElement.src = '';
+                        this.envFileElement.remove(); // DOMから削除
+                    } catch (e) { }
+                    this.envFileElement = null;
+                }
+                if (this._envFileBlobUrl) {
+                    URL.revokeObjectURL(this._envFileBlobUrl);
+                    this._envFileBlobUrl = null;
                 }
             }
 
