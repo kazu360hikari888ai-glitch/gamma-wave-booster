@@ -1,7 +1,7 @@
 # Gamma Wave Booster Pro (GAS Edition)
 
 ## 概要
-政木和三先生の理論に基づく脳波誘導アプリ「ガンマ波ブースター」のGoogle Apps Script (GAS) 実装版です。
+脳波誘導アプリ「ガンマ波ブースター」のGoogle Apps Script (GAS) 実装版です。
 Web Audio APIによるバイノーラルビート生成と、YouTube IFrame APIによる環境音再生を組み合わせています。
 
 ## ファイル構成
