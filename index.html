@@ -7,6 +7,27 @@
     <meta name="description" content="政木和三先生の理論に基づく脳波誘導アプリ。バイノーラルビートで集中・リラックス・睡眠をサポート。">
     <title>脳波ブースター Pro | Gamma Wave Booster</title>
 
+    <!-- セキュリティヘッダー (A05修正: CSP, X-Content-Type-Options, Referrer-Policy) -->
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline'
+            https://cdn.tailwindcss.com
+            https://unpkg.com
+            https://www.gstatic.com;
+        style-src 'self' 'unsafe-inline'
+            https://fonts.googleapis.com;
+        font-src https://fonts.gstatic.com;
+        connect-src 'self'
+            https://*.googleapis.com
+            https://*.firebaseio.com
+            https://*.firebaseapp.com;
+        img-src 'self' data: blob:;
+        media-src 'self' blob:;
+        worker-src 'self';
+    ">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+
     <!-- PWA -->
     <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#1e1b4b">
@@ -25,16 +46,27 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@100;400;700&display=swap"
         rel="stylesheet">
 
-    <!-- React & ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- Babel -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!--
+        [HIGH-1] React本番ビルドに切り替え（react.development.js → react.production.min.js）
+        [HIGH-2] 全CDNスクリプトにSubresource Integrity (SRI)ハッシュを付与
+    -->
 
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <!-- React 本番ビルド (A05修正: developmentビルドからproductionビルドへ) -->
+    <script crossorigin="anonymous" integrity="sha384-tMH8h3BGESGckSAVGZ82T9n90ztNXxvdwvdM6UoR56cYcf+0iGXBliJ29D+wZ/x8"
+        src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin="anonymous" integrity="sha384-bm7MnzvK++ykSwVJ2tynSE5TRdN+xL418osEVF2DE/L/gfWHj91J2Sphe582B1Bh"
+        src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <!-- Babel (JSX変換に必要、SRIで保護) -->
+    <script crossorigin="anonymous" integrity="sha384-KCD0A3BqTNZfWlXJcL7fKzDri97vicyNr4NUIr0vX6K9PZ0X5hOTeEbFh99jPEST"
+        src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
+
+    <!-- Firebase SDKs (SRI付き) -->
+    <script crossorigin="anonymous" integrity="sha384-ViccRjS0k/lvYsrtaKXk+ES61/4PAZlFI/mPHmLC1YwzKOAIbXbi5ZXDzcm3F8gH"
+        src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script crossorigin="anonymous" integrity="sha384-+/4lqMnmLqwbdHXshvGDmBTeWlNoPRdjXi4ZsiBj10EhQXaTBe3RF5JZktdSjug6"
+        src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script crossorigin="anonymous" integrity="sha384-7TetnPNdXXu6qURzIEXWCwpXedGGBJSXIR5Cv0gOWTB34UD5TxPHx33PhjA6wFQ3"
+        src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
     <style>
         /* Custom Styles for Glassmorphism & Animations */
@@ -496,8 +528,11 @@
                 if (type === 'pink') {
                     let b0, b1, b2, b3, b4, b5, b6;
                     b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
+                    // [MEDIUM-5修正] Math.random() → crypto.getRandomValues() へ変更
+                    const randBuf = new Uint32Array(bufferSize);
+                    crypto.getRandomValues(randBuf);
                     for (let i = 0; i < bufferSize; i++) {
-                        const white = Math.random() * 2 - 1;
+                        const white = (randBuf[i] / 0xFFFFFFFF) * 2 - 1;
                         b0 = 0.99886 * b0 + white * 0.0555179;
                         b1 = 0.99332 * b1 + white * 0.0750759;
                         b2 = 0.96900 * b2 + white * 0.1538520;
@@ -512,8 +547,11 @@
                 // Generate Brown Noise
                 else {
                     let lastOut = 0.0;
+                    // [MEDIUM-5修正] Math.random() → crypto.getRandomValues() へ変更
+                    const randBuf2 = new Uint32Array(bufferSize);
+                    crypto.getRandomValues(randBuf2);
                     for (let i = 0; i < bufferSize; i++) {
-                        const white = Math.random() * 2 - 1;
+                        const white = (randBuf2[i] / 0xFFFFFFFF) * 2 - 1;
                         output[i] = (lastOut + (0.02 * white)) / 1.02;
                         lastOut = output[i];
                         output[i] *= 3.5; // (roughly) compensate for gain
@@ -776,8 +814,16 @@
                                 </button>
                                 <label className="flex-1 py-2.5 bg-amber-600/80 hover:bg-amber-500 rounded-lg text-xs font-bold text-white transition-colors flex items-center justify-center gap-1.5 cursor-pointer">
                                     <span>📥</span> 復元
-                                    <input type="file" accept=".json"
-                                        onChange={(e) => { if (e.target.files[0]) onImport(e.target.files[0]); e.target.value = ''; }}
+                                    <input type="file" accept=".json,application/json"
+                                        onChange={(e) => {
+                                            // iOS Safari対策: ファイル参照を先に取得してからリセット
+                                            // e.target.valueを同期リセットするとiOSでFileオブジェクトが無効化されるため遅延実行
+                                            const file = e.target.files && e.target.files[0];
+                                            if (file) {
+                                                onImport(file);
+                                                setTimeout(() => { e.target.value = ''; }, 500);
+                                            }
+                                        }}
                                         className="hidden" />
                                 </label>
                             </div>
@@ -841,12 +887,15 @@
 
             // ロード完了フラグ（初回保存の競合防止）
             const loadCompleteRef = useRef(false);
+            // 最新の設定を常に保持するRef（pagehideなど非同期外からでも最新値を取得できる）
+            const currentConfigRef = useRef(null);
 
-            // Init & Load Settings 
+            // Init & Load Settings
             useEffect(() => {
 
                 // Load Config
                 const savedConfig = localStorage.getItem('gamma_config');
+                let restoredOk = false;
                 if (savedConfig) {
                     try {
                         const config = JSON.parse(savedConfig);
@@ -873,18 +922,51 @@
                                 if (found) setCurrentMode(found);
                             }
                         }
+                        restoredOk = true;
                     } catch (e) {
                         console.error('設定の読み込みに失敗しました:', e);
                     }
                 }
 
-                // ロード完了を示すフラグをセット（次のレンダリングサイクルで保存を有効化）
-                requestAnimationFrame(() => { loadCompleteRef.current = true; });
+                // ロード完了フラグON → 以降の state 変化で自動保存が動く
+                // 復元成功時は「前回の設定を復元しました」トーストを表示
+                requestAnimationFrame(() => {
+                    loadCompleteRef.current = true;
+                    if (restoredOk) {
+                        setTimeout(() => {
+                            setToastMsg('🔄 前回の設定を復元しました');
+                        }, 300);
+                    }
+                });
+
+                // ─── アプリ終了・バックグラウンド時の確実な保存 ───
+                // iOS PWA では beforeunload が発火しないため pagehide + visibilitychange を使用
+                const saveNow = () => {
+                    if (currentConfigRef.current) {
+                        try {
+                            localStorage.setItem('gamma_config', JSON.stringify(currentConfigRef.current));
+                        } catch (e) { /* QuotaExceededError 等は無視 */ }
+                    }
+                };
+
+                const handlePageHide = () => saveNow();
+                const handleBeforeUnload = () => saveNow();
+                const handleVisibilityForSave = () => {
+                    if (document.hidden) saveNow();
+                };
+
+                window.addEventListener('pagehide', handlePageHide);
+                window.addEventListener('beforeunload', handleBeforeUnload);
+                document.addEventListener('visibilitychange', handleVisibilityForSave);
 
                 return () => {
+                    saveNow(); // アンマウント時にも念のため保存
                     if (timerRef.current) clearInterval(timerRef.current);
                     audioMgr.current.cleanup();
                     mediaMgr.current.stop();
+                    window.removeEventListener('pagehide', handlePageHide);
+                    window.removeEventListener('beforeunload', handleBeforeUnload);
+                    document.removeEventListener('visibilitychange', handleVisibilityForSave);
                 };
             }, []);
 
@@ -1237,22 +1319,17 @@
                 toastTimer.current = setTimeout(() => setToastMsg(''), 2200);
             };
 
-            // Save settings to localStorage when they change
-            const isInitialMount = useRef(true);
+            // ─── 自動保存（state 変化時）───
+            // currentConfigRef を常に最新値に保ち、localStorageにも書き込む
+            // ノイジーな「設定を保存しました」トーストは廃止（終了保存・起動復元で十分）
             useEffect(() => {
-                // ロード完了前は保存しない（レースコンディション防止）
-                if (!loadCompleteRef.current) {
-                    isInitialMount.current = false;
-                    return;
-                }
+                if (!loadCompleteRef.current) return; // ロード完了前は保存しない
+
                 const config = { masterVol, envVol, duration, selectedEnv, currentModeId: currentMode.id };
-                localStorage.setItem('gamma_config', JSON.stringify(config));
-                // Show toast only after initial load
-                if (isInitialMount.current) {
-                    isInitialMount.current = false;
-                } else {
-                    showToast('✅ 設定を保存しました');
-                }
+                currentConfigRef.current = config; // refを最新値に更新
+                try {
+                    localStorage.setItem('gamma_config', JSON.stringify(config));
+                } catch (e) { /* QuotaExceededError 等は無視 */ }
             }, [masterVol, envVol, duration, selectedEnv, currentMode]);
 
             // Export settings as JSON file for backup
@@ -1276,41 +1353,101 @@
             };
 
             // Import settings from JSON file (サニタイズ済み)
+            // iOS Safari対策: FileオブジェクトをArrayBufferとしてコピーし、
+            // 非同期処理中にFileオブジェクトが無効化されても安全に処理できるよう改善
             const importSettings = (file) => {
-                if (!file) return;
-                // ファイルサイズチェック（1MB上限）
-                if (file.size > 1024 * 1024) {
-                    showToast('⚠️ ファイルが大きすぎます');
+                if (!file) {
+                    showToast('⚠️ ファイルを選択してください');
                     return;
                 }
+
+                // ファイルサイズチェック（1MB上限）
+                if (file.size > 1024 * 1024) {
+                    showToast('⚠️ ファイルが大きすぎます（1MB以下）');
+                    return;
+                }
+
+                // ファイル名チェック（.json拡張子確認）
+                if (!file.name.toLowerCase().endsWith('.json')) {
+                    showToast('⚠️ JSONファイルを選択してください');
+                    return;
+                }
+
                 const reader = new FileReader();
+
                 reader.onload = (e) => {
                     try {
-                        const config = JSON.parse(e.target.result);
-                        if (typeof config !== 'object' || config === null || config._app !== 'GammaWaveBooster') {
-                            showToast('⚠️ 無効なファイルです');
+                        const text = e.target.result;
+                        if (!text || typeof text !== 'string') {
+                            showToast('⚠️ ファイルの読み込みに失敗しました');
                             return;
                         }
+
+                        const config = JSON.parse(text);
+
+                        if (typeof config !== 'object' || config === null) {
+                            showToast('⚠️ 無効なファイル形式です');
+                            return;
+                        }
+                        if (config._app !== 'GammaWaveBooster') {
+                            showToast('⚠️ このアプリのバックアップファイルではありません');
+                            return;
+                        }
+
                         // サニタイズして適用
-                        if (config.masterVol !== undefined) setMasterVol(sanitizeNumber(config.masterVol, 0, 100, 20));
-                        if (config.envVol !== undefined) setEnvVol(sanitizeNumber(config.envVol, 0, 100, 20));
+                        const newMasterVol = config.masterVol !== undefined
+                            ? sanitizeNumber(config.masterVol, 0, 100, 20) : 20;
+                        const newEnvVol = config.envVol !== undefined
+                            ? sanitizeNumber(config.envVol, 0, 100, 20) : 20;
+                        const newDuration = config.duration
+                            ? sanitizeNumber(config.duration, 60, 7200, 3600) : 3600;
+                        const newSelectedEnv = config.selectedEnv
+                            ? sanitizeString(config.selectedEnv, allowedEnvIds, 'none') : 'none';
 
-                        if (config.duration) setDuration(sanitizeNumber(config.duration, 60, 7200, 3600));
-                        if (config.selectedEnv) setSelectedEnv(sanitizeString(config.selectedEnv, allowedEnvIds, 'none'));
-
+                        let newMode = null;
                         if (config.currentModeId) {
                             const safeId = sanitizeString(config.currentModeId, allowedModeIds, null);
-                            if (safeId) {
-                                const found = MODES.find(m => m.id === safeId);
-                                if (found) setCurrentMode(found);
-                            }
+                            if (safeId) newMode = MODES.find(m => m.id === safeId) || null;
                         }
-                        showToast('✅ 設定を復元しました');
+
+                        // React stateへ反映
+                        setMasterVol(newMasterVol);
+                        setEnvVol(newEnvVol);
+                        setDuration(newDuration);
+                        setSelectedEnv(newSelectedEnv);
+                        if (newMode) setCurrentMode(newMode);
+
+                        // localStorageへ即時書き込み（useEffectの遅延を待たずに確実に保存）
+                        const savedConfig = {
+                            masterVol: newMasterVol,
+                            envVol: newEnvVol,
+                            duration: newDuration,
+                            selectedEnv: newSelectedEnv,
+                            currentModeId: newMode ? newMode.id : (config.currentModeId || MODES[0].id)
+                        };
+                        localStorage.setItem('gamma_config', JSON.stringify(savedConfig));
+
+                        const exportedAt = config._exportedAt
+                            ? new Date(config._exportedAt).toLocaleDateString('ja-JP')
+                            : '';
+                        showToast(`✅ 設定を復元しました${exportedAt ? ` (${exportedAt}のデータ)` : ''}`);
+
                     } catch (err) {
-                        showToast('⚠️ ファイルの読み込みに失敗しました');
+                        console.error('Import error:', err);
+                        if (err instanceof SyntaxError) {
+                            showToast('⚠️ ファイルが壊れています（JSON形式エラー）');
+                        } else {
+                            showToast('⚠️ 復元に失敗しました');
+                        }
                     }
                 };
-                reader.readAsText(file);
+
+                reader.onerror = () => {
+                    showToast('⚠️ ファイルの読み取りに失敗しました');
+                };
+
+                // エンコーディング明示（スマホ環境でのUTF-8対応）
+                reader.readAsText(file, 'UTF-8');
             };
 
             // Format Time
@@ -1612,7 +1749,15 @@
         }, true);
 
         // --- Debug Console Component ---
+        // [LOW-6修正] デバッグコンソールをlocalhost開発環境に限定し、本番アプリでは表示しない
+        const IS_DEV = window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' ||
+            window.location.protocol === 'file:';
+
         const DebugConsole = () => {
+            // 本番環境では完全に非表示
+            if (!IS_DEV) return null;
+
             const [visible, setVisible] = useState(false);
             const [logs, setLogs] = useState([]);
 
