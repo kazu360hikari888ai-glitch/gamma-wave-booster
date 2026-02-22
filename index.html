@@ -17,7 +17,7 @@
         style-src 'self' 'unsafe-inline'
             https://fonts.googleapis.com;
         font-src https://fonts.gstatic.com;
-        connect-src 'self'
+        connect-src 'self' blob:
             https://*.googleapis.com
             https://*.firebaseio.com
             https://*.firebaseapp.com;
@@ -634,12 +634,11 @@
             }
 
             // ─── 環境音ファイル: AudioContextバッファデコード方式 ───
-            // fetch→decodeAudioData→AudioBufferSourceNodeにenvGain経由で接続する。
-            // これによりバイノーラルビートと同じAudioContextセッションで再生され、
-            // スマホバックグラウンド時も止まらなくなる。
-            async playEnvFile(url) {
+            // sourceはBlob/FileまたはURL文字列を受け入れる。
+            // Blobは.arrayBuffer()で直接取得するためfetch()+CSPに依存しない。
+            async playEnvFile(source) {
                 this.stopEnvFile();
-                if (!this.ctx || !url) return;
+                if (!this.ctx || !source) return;
 
                 // デコード中に stopEnvFile が呼ばれたときのキャンセルフラグ
                 let aborted = false;
@@ -647,13 +646,18 @@
                 this._envFileAbort = abort;
 
                 try {
-                    const response = await fetch(url);
+                    let arrayBuffer;
+                    if (source instanceof Blob) {
+                        // Blob/Fileを直接ArrayBufferに変換（fetch不要、CSPも無関係）
+                        arrayBuffer = await source.arrayBuffer();
+                    } else {
+                        // URL文字列の場合は fetch で取得（フォールバック）
+                        const response = await fetch(source);
+                        arrayBuffer = await response.arrayBuffer();
+                    }
                     if (aborted) return;
 
-                    const arrayBuffer = await response.arrayBuffer();
-                    if (aborted) return;
-
-                    // AudioBufferにデコード（ブラウザが自動でMP3/WAV/OGG等を蟣訳）
+                    // AudioBufferにデコード
                     const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
                     if (aborted) return;
 
@@ -836,7 +840,8 @@
                 if (!file) return;
                 const url = URL.createObjectURL(file);
                 if (envFiles[envId] && envFiles[envId].url) URL.revokeObjectURL(envFiles[envId].url);
-                setEnvFiles(prev => ({ ...prev, [envId]: { url, name: file.name } }));
+                // fileプロパティにFileオブジェクトを保持（playEnvFileがBlob直接アクセスできる）
+                setEnvFiles(prev => ({ ...prev, [envId]: { url, name: file.name, file } }));
                 // IndexedDBに保存（次回起動時に自動復元）
                 AudioFileDB.save(envId, file, file.name);
             };
@@ -852,7 +857,8 @@
                 // Auto-select first file
                 const url = URL.createObjectURL(audioFiles[0]);
                 if (envFiles[envId] && envFiles[envId].url) URL.revokeObjectURL(envFiles[envId].url);
-                setEnvFiles(prev => ({ ...prev, [envId]: { url, name: audioFiles[0].name } }));
+                // fileプロパティにFileオブジェクトを保持
+                setEnvFiles(prev => ({ ...prev, [envId]: { url, name: audioFiles[0].name, file: audioFiles[0] } }));
                 // IndexedDBに保存（次回起動時に自動復元）
                 AudioFileDB.save(envId, audioFiles[0], audioFiles[0].name);
             };
@@ -860,7 +866,8 @@
             const handleFolderFileSelect = (envId, file) => {
                 const url = URL.createObjectURL(file);
                 if (envFiles[envId] && envFiles[envId].url) URL.revokeObjectURL(envFiles[envId].url);
-                setEnvFiles(prev => ({ ...prev, [envId]: { url, name: file.name } }));
+                // fileプロパティにFileオブジェクトを保持
+                setEnvFiles(prev => ({ ...prev, [envId]: { url, name: file.name, file } }));
                 // IndexedDBに保存（次回起動時に自動復元）
                 AudioFileDB.save(envId, file, file.name);
             };
@@ -1086,7 +1093,8 @@
                         if (data && data.blob) {
                             // Blobから再生可能なObject URLを生成
                             const url = URL.createObjectURL(data.blob);
-                            restored[key] = { url, name: data.name };
+                            // fileプロパティにBlobを保持（playEnvFileがBlob直接アクセスできる）
+                            restored[key] = { url, name: data.name, file: data.blob };
                         }
                     }
                     if (Object.keys(restored).length > 0) {
@@ -1222,17 +1230,18 @@
 
             const updateEnvironmentSound = () => {
                 if (selectedEnv === 'none') {
-                    audioMgr.current.stopEnvFile(); // AudioContext経由で停止
+                    audioMgr.current.stopEnvFile();
                     audioMgr.current.stopNoise();
                     return;
                 }
 
-                if (envFiles[selectedEnv] && envFiles[selectedEnv].url) {
+                const envFile = envFiles[selectedEnv];
+                if (envFile && (envFile.file || envFile.url)) {
                     audioMgr.current.stopNoise();
-                    // AudioContext経由で再生 → バックグラウンドでも止まらない
-                    audioMgr.current.playEnvFile(envFiles[selectedEnv].url);
+                    // Blobがあれば直接渡す（fetch不要、CSP無関係）、なければURLをフォールバック
+                    const source = envFile.file || envFile.url;
+                    audioMgr.current.playEnvFile(source);
                 } else {
-                    // ファイル未選択
                     audioMgr.current.stopEnvFile();
                 }
             };
