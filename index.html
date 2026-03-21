@@ -406,6 +406,8 @@
                     { id: 'auto', label: '全自動・覚醒', desc: 'V字型誘導 → ガンマ波で覚醒', color: '#a855f7', target: 'variable', flow: true },
                     { id: 'refresh_flow', label: '疲労回復・リフレッシュ', desc: '脳を休めて → スッキリ目覚め', color: '#059669', target: 'variable', flow: true },
                     { id: 'fatigue_sleep_flow', label: '疲労解消・安眠', desc: '１日の疲れを癒し → 深い眠りへ', color: '#7c3aed', target: 'variable', flow: true },
+                    { id: 'mental_care_flow', label: 'メンタル改善', desc: '気分リセット → こだわり解放 → 安心へ', color: '#10b981', target: 'variable', flow: true },
+                    { id: 'body_mind_refresh_flow', label: '心身のリフレッシュ', desc: '脳と身体をまるごとリフレッシュ', color: '#0ea5e9', target: 'variable', flow: true },
                 ]
             },
             {
@@ -1607,6 +1609,64 @@
                     } else {
                         targetFreq = 7.5 + (1.5 * ((elapsed - p4) / (totalSec - p4)));
                     }
+                } else if (currentMode.id === 'mental_care_flow') {
+                    // メンタル改善フロー (60min base)
+                    // ネガティブな感情やストレスを段階的に解消し、心の安定を取り戻すプログラム
+                    // Phase 1 (0-12%): 10Hz→12Hz アルファ→SMR波で気分を引き上げ、脳の感情調整を活性化
+                    // Phase 2 (12-30%): 12Hz→8Hz SMR→低アルファ波で不安を鎮め、心を落ち着かせる
+                    // Phase 3 (30-50%): 8Hz→5Hz 低シータ波でこだわり・反すう思考を解放
+                    // Phase 4 (50-70%): 5Hz→7.5Hz シータ-アルファ境界で自己受容・自己許し
+                    // Phase 5 (70-85%): 7.5Hz→9Hz アルファ波で「大丈夫」という安心感を構築
+                    // Phase 6 (85-100%): 9Hz→10Hz 安定したアルファ波で前向きな状態を定着
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.12;
+                    const p2 = totalSec * 0.30;
+                    const p3 = totalSec * 0.50;
+                    const p4 = totalSec * 0.70;
+                    const p5 = totalSec * 0.85;
+
+                    if (elapsed < p1) {
+                        targetFreq = 10 + (2 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 12 - (4 * ((elapsed - p1) / (p2 - p1)));
+                    } else if (elapsed < p3) {
+                        targetFreq = 8 - (3 * ((elapsed - p2) / (p3 - p2)));
+                    } else if (elapsed < p4) {
+                        targetFreq = 5 + (2.5 * ((elapsed - p3) / (p4 - p3)));
+                    } else if (elapsed < p5) {
+                        targetFreq = 7.5 + (1.5 * ((elapsed - p4) / (p5 - p4)));
+                    } else {
+                        targetFreq = 9 + (1 * ((elapsed - p5) / (totalSec - p5)));
+                    }
+                } else if (currentMode.id === 'body_mind_refresh_flow') {
+                    // 心身のリフレッシュフロー (60min base)
+                    // 脳の疲労と身体の緊張をまるごとリフレッシュし、スッキリした状態へ導くプログラム
+                    // Phase 1 (0-10%): 12Hz→10Hz SMR→アルファ波で脳の興奮を穏やかに沈静
+                    // Phase 2 (10-30%): 10Hz→7.83Hz シューマン共振で自律神経のバランスを整える
+                    // Phase 3 (30-50%): 7.83Hz→5Hz 低シータ波で身体の深い緊張を解放
+                    // Phase 4 (50-70%): 5Hz→7.83Hz シューマン共振へ戻り心身を統合
+                    // Phase 5 (70-85%): 7.83Hz→12Hz SMR波で脳を爽やかに活性化
+                    // Phase 6 (85-100%): 12Hz→14Hz SMR波でスッキリ覚醒、リフレッシュ完了
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.10;
+                    const p2 = totalSec * 0.30;
+                    const p3 = totalSec * 0.50;
+                    const p4 = totalSec * 0.70;
+                    const p5 = totalSec * 0.85;
+
+                    if (elapsed < p1) {
+                        targetFreq = 12 - (2 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 10 - (2.17 * ((elapsed - p1) / (p2 - p1)));
+                    } else if (elapsed < p3) {
+                        targetFreq = 7.83 - (2.83 * ((elapsed - p2) / (p3 - p2)));
+                    } else if (elapsed < p4) {
+                        targetFreq = 5 + (2.83 * ((elapsed - p3) / (p4 - p3)));
+                    } else if (elapsed < p5) {
+                        targetFreq = 7.83 + (4.17 * ((elapsed - p4) / (p5 - p4)));
+                    } else {
+                        targetFreq = 12 + (2 * ((elapsed - p5) / (totalSec - p5)));
+                    }
                 } else {
                     targetFreq = currentMode.target;
                 }
@@ -1649,6 +1709,8 @@
                     case 'refresh_flow': return "短時間で脳をシューマン共振で急速に休めた後、SMR波でシャキッと目覚める。パワーナップやリフレッシュに最適です。";
                     case 'fatigue_sleep_flow': return "１日の脳と身体の疲労を段階的に解消する安眠プログラムです。SMR波(12Hz)で活動状態の脳を穏やかに鎮め、シューマン共振(7.83Hz)で心身の緊張をリセット。深いシータ波(4Hz)で疲労物質の排出を促し、デルタ波(2Hz→0.5Hz)でゆっくりと深い眠りへ誘導します。就寝30分前の使用がおすすめです。";
                     case 'schumann_flow': return "地球固有の共振周波数「シューマン共振(7.83Hz)」を中心にしたプログラムです。アルファ波からシューマン共振へ降下し、深く浸った後、第2高調波(14.3Hz)で脳を活性化。再び基本共振に戻り統合します。地球のリズムと同調することで自律神経のバランスが整い、心身のストレスが解消されます。";
+                    case 'mental_care_flow': return "ネガティブな感情やストレスを段階的に解消するメンタルケアの自動プログラムです。SMR波(12Hz)で沈んだ気分を引き上げ、低アルファ波(8Hz)で不安を鎮静。低シータ波(5Hz)でこだわりや反すう思考を手放し、シータ-アルファ境界(7.5Hz)で自己受容を促進。最後にアルファ波(9→10Hz)で「大丈夫」という安心感と前向きな気持ちを定着させます。";
+                    case 'body_mind_refresh_flow': return "脳の疲労と身体の緊張をまるごとリフレッシュする自動プログラムです。SMR波(12Hz)で脳の興奮を鎮め、シューマン共振(7.83Hz)で自律神経を整え、低シータ波(5Hz)で身体の深い緊張を解放。再びシューマン共振で心身を統合した後、SMR波(12→14Hz)で脳を爽やかに活性化し、スッキリとした覚醒状態へ導きます。";
                     case 'power_focus_flow': return "SMR波(14Hz)で集中の基礎を作り、そこからガンマ波(40Hz)へ滑らかに移行。『ゾーン』に入る最強の集中フローです。";
                     case 'happy_flow': return "アルファ波(10Hz)で心を落ち着かせた後、SMR波(12.5Hz)で幸福感を引き出し、低ベータ波(15Hz)で明るい活力を最大化。最後にアルファ波に戻り、ポジティブな気分を定着させるハッピーフローです。";
                     case 'happiness': return "12.5HzのSMR波。セロトニンやドーパミンの分泌を促し、自然な幸福感と心の安定をもたらします。気分が沈んだ時や、前向きな気持ちになりたい時に。";
