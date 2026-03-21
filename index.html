@@ -368,33 +368,6 @@
             console.warn("Firebase Init Failed:", e);
         }
 
-        // --- Web Worker Timer（バックグラウンドでもスロットリングされないタイマー） ---
-        // モバイルブラウザはバックグラウンドタブのsetIntervalを1分以上に制限するが、
-        // Web Worker内のsetIntervalは制限されない。
-        const createWorkerTimer = () => {
-            const workerCode = `
-                let timerId = null;
-                self.onmessage = function(e) {
-                    if (e.data.cmd === 'start') {
-                        if (timerId) clearInterval(timerId);
-                        timerId = setInterval(() => self.postMessage('tick'), e.data.interval || 1000);
-                    } else if (e.data.cmd === 'stop') {
-                        if (timerId) { clearInterval(timerId); timerId = null; }
-                    }
-                };
-            `;
-            try {
-                const blob = new Blob([workerCode], { type: 'application/javascript' });
-                const url = URL.createObjectURL(blob);
-                const worker = new Worker(url);
-                URL.revokeObjectURL(url);
-                return worker;
-            } catch (e) {
-                // Web Worker非対応の場合はnull（通常setIntervalにフォールバック）
-                return null;
-            }
-        };
-
         // --- Constants ---
         const CARRIER_FREQ = 151; // Hz - Masaki Kazumi Theory
 
@@ -1081,7 +1054,6 @@
             const [elapsed, setElapsed] = useState(0); // seconds
             const [duration, setDuration] = useState(3600); // seconds (default 60m)
             const timerRef = useRef(null);
-            const workerTimerRef = useRef(null); // Web Workerタイマー
             const wakeLockRef = useRef(null);
             const isPlayingRef = useRef(false); // バックグラウンド維持用ref
             const bgKeepAliveRef = useRef(null); // バックグラウンドkeepAliveインターバル
@@ -1199,10 +1171,6 @@
                 return () => {
                     saveNow(); // アンマウント時にも念のため保存
                     if (timerRef.current) clearInterval(timerRef.current);
-                    if (workerTimerRef.current) {
-                        workerTimerRef.current.postMessage({ cmd: 'stop' });
-                        workerTimerRef.current.terminate();
-                    }
                     if (bgKeepAliveRef.current) clearInterval(bgKeepAliveRef.current);
                     audioMgr.current.cleanup();
                     mediaMgr.current.stop();
@@ -1275,34 +1243,20 @@
                 }, 3000);
 
                 // Timer for Auto Mode & Auto Stop
-                // Web Workerタイマーを優先使用（バックグラウンドでも正確に動作）
                 setElapsed(0);
                 if (timerRef.current) clearInterval(timerRef.current);
-                if (workerTimerRef.current) {
-                    workerTimerRef.current.postMessage({ cmd: 'stop' });
-                    workerTimerRef.current.terminate();
-                }
 
-                const tickHandler = () => {
+                timerRef.current = setInterval(() => {
                     setElapsed(prev => {
                         const next = prev + 1;
                         if (duration > 0 && next >= duration) {
-                            stopSession();
+                            // state updater外で停止を非同期実行
+                            setTimeout(() => stopSession(), 0);
                             return duration;
                         }
                         return next;
                     });
-                };
-
-                const worker = createWorkerTimer();
-                if (worker) {
-                    workerTimerRef.current = worker;
-                    worker.onmessage = () => tickHandler();
-                    worker.postMessage({ cmd: 'start', interval: 1000 });
-                } else {
-                    // フォールバック: 通常のsetInterval
-                    timerRef.current = setInterval(tickHandler, 1000);
-                }
+                }, 1000);
             };
 
             const stopSession = () => {
@@ -1311,11 +1265,6 @@
                 setIsPlaying(false);
                 audioMgr.current.cleanup(); // Stops oscillators + envFileNode
                 if (timerRef.current) clearInterval(timerRef.current);
-                if (workerTimerRef.current) {
-                    workerTimerRef.current.postMessage({ cmd: 'stop' });
-                    workerTimerRef.current.terminate();
-                    workerTimerRef.current = null;
-                }
 
                 // keepAlive停止
                 if (bgKeepAliveRef.current) {
