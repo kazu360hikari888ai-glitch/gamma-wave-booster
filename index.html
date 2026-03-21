@@ -1056,6 +1056,8 @@
             const timerRef = useRef(null);
             const wakeLockRef = useRef(null);
             const isPlayingRef = useRef(false); // バックグラウンド維持用ref
+            const sessionStartRef = useRef(null); // セッション開始時刻(Date.now())
+            const durationRef = useRef(3600);    // 常に最新のdurationを保持するref
             const bgKeepAliveRef = useRef(null); // バックグラウンドkeepAliveインターバル
 
             // Audio Manager
@@ -1243,28 +1245,29 @@
                 }, 3000);
 
                 // Timer for Auto Mode & Auto Stop
+                // Date.now()ベースで経過秒を計算することで、
+                // クロージャーの陳腐化・Reactのバッチ更新・setIntervalのドリフトを全て回避する
                 setElapsed(0);
+                sessionStartRef.current = Date.now();
                 if (timerRef.current) clearInterval(timerRef.current);
 
                 timerRef.current = setInterval(() => {
-                    setElapsed(prev => {
-                        const next = prev + 1;
-                        if (duration > 0 && next >= duration) {
-                            // state updater外で停止を非同期実行
-                            setTimeout(() => stopSession(), 0);
-                            return duration;
-                        }
-                        return next;
-                    });
+                    if (!sessionStartRef.current) return;
+                    const next = Math.floor((Date.now() - sessionStartRef.current) / 1000);
+                    setElapsed(next);
+                    if (durationRef.current > 0 && next >= durationRef.current) {
+                        stopSession();
+                    }
                 }, 1000);
             };
 
             const stopSession = () => {
                 isPlayingRef.current = false; // ref同期
                 window.__gammaIsPlaying = false; // グローバルフラグ
+                sessionStartRef.current = null; // タイマー無効化
                 setIsPlaying(false);
                 audioMgr.current.cleanup(); // Stops oscillators + envFileNode
-                if (timerRef.current) clearInterval(timerRef.current);
+                if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
 
                 // keepAlive停止
                 if (bgKeepAliveRef.current) {
@@ -1283,6 +1286,9 @@
                     navigator.mediaSession.metadata = null;
                 }
             };
+
+            // durationRefを常に最新のdurationに同期
+            useEffect(() => { durationRef.current = duration; }, [duration]);
 
             // Watch for volume changes
             useEffect(() => {
