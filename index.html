@@ -368,6 +368,33 @@
             console.warn("Firebase Init Failed:", e);
         }
 
+        // --- Web Worker Timer（バックグラウンドでもスロットリングされないタイマー） ---
+        // モバイルブラウザはバックグラウンドタブのsetIntervalを1分以上に制限するが、
+        // Web Worker内のsetIntervalは制限されない。
+        const createWorkerTimer = () => {
+            const workerCode = `
+                let timerId = null;
+                self.onmessage = function(e) {
+                    if (e.data.cmd === 'start') {
+                        if (timerId) clearInterval(timerId);
+                        timerId = setInterval(() => self.postMessage('tick'), e.data.interval || 1000);
+                    } else if (e.data.cmd === 'stop') {
+                        if (timerId) { clearInterval(timerId); timerId = null; }
+                    }
+                };
+            `;
+            try {
+                const blob = new Blob([workerCode], { type: 'application/javascript' });
+                const url = URL.createObjectURL(blob);
+                const worker = new Worker(url);
+                URL.revokeObjectURL(url);
+                return worker;
+            } catch (e) {
+                // Web Worker非対応の場合はnull（通常setIntervalにフォールバック）
+                return null;
+            }
+        };
+
         // --- Constants ---
         const CARRIER_FREQ = 151; // Hz - Masaki Kazumi Theory
 
@@ -378,6 +405,7 @@
                 modes: [
                     { id: 'auto', label: '全自動・覚醒', desc: 'V字型誘導 → ガンマ波で覚醒', color: '#a855f7', target: 'variable', flow: true },
                     { id: 'refresh_flow', label: '疲労回復・リフレッシュ', desc: '脳を休めて → スッキリ目覚め', color: '#059669', target: 'variable', flow: true },
+                    { id: 'fatigue_sleep_flow', label: '疲労解消・安眠', desc: '１日の疲れを癒し → 深い眠りへ', color: '#7c3aed', target: 'variable', flow: true },
                 ]
             },
             {
@@ -394,6 +422,7 @@
                 id: 'relax_group', label: '🌿 リラックス・癒し', color: '#14b8a6',
                 modes: [
                     { id: 'peace_flow', label: 'やすらぎフロー', desc: 'リラックス → 共振 → 深い平安 → 安定', color: '#2dd4bf', target: 'variable', flow: true },
+                    { id: 'schumann_flow', label: 'シューマン共振フロー', desc: '地球の周波数7.83Hzで心身を共振・調律', color: '#0ea5e9', target: 'variable', flow: true },
                     { id: 'peace', label: '平安・やすらぎ', desc: '低アルファ波 8.5Hz', color: '#5eead4', target: 8.5 },
                     { id: 'inner_silence', label: '内なる静寂', desc: 'シューマン-調和 7.25Hz', color: '#99f6e4', target: 7.25 },
                     { id: 'relax', label: 'リラックス', desc: 'アルファ波 10Hz', color: '#14b8a6', target: 10 },
@@ -482,6 +511,13 @@
                 }
                 if (this.ctx.state === 'suspended') {
                     this.ctx.resume();
+                }
+            }
+
+            // AudioContextがsuspendedになった場合に再開する（バックグラウンド復帰時用）
+            ensureContextRunning() {
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume().catch(() => {});
                 }
             }
 
@@ -1032,7 +1068,10 @@
             const [elapsed, setElapsed] = useState(0); // seconds
             const [duration, setDuration] = useState(3600); // seconds (default 60m)
             const timerRef = useRef(null);
+            const workerTimerRef = useRef(null); // Web Workerタイマー
             const wakeLockRef = useRef(null);
+            const isPlayingRef = useRef(false); // バックグラウンド維持用ref
+            const bgKeepAliveRef = useRef(null); // バックグラウンドkeepAliveインターバル
 
             // Audio Manager
             const audioMgr = useRef(new AudioManager());
@@ -1147,6 +1186,11 @@
                 return () => {
                     saveNow(); // アンマウント時にも念のため保存
                     if (timerRef.current) clearInterval(timerRef.current);
+                    if (workerTimerRef.current) {
+                        workerTimerRef.current.postMessage({ cmd: 'stop' });
+                        workerTimerRef.current.terminate();
+                    }
+                    if (bgKeepAliveRef.current) clearInterval(bgKeepAliveRef.current);
                     audioMgr.current.cleanup();
                     mediaMgr.current.stop();
                     window.removeEventListener('pagehide', handlePageHide);
@@ -1171,6 +1215,8 @@
             };
 
             const startSession = () => {
+                isPlayingRef.current = true; // ref同期（バックグラウンド用）
+                window.__gammaIsPlaying = true; // グローバルフラグ（visibilitychange用）
                 updateFrequency(); // Start oscillators
 
                 // Fade in master volume
@@ -1198,10 +1244,33 @@
                     }).catch(e => console.log('Wake Lock取得失敗:', e));
                 }
 
+                // --- バックグラウンドkeepAlive ---
+                // モバイルブラウザはバックグラウンドでsetIntervalを大幅にスロットリングする。
+                // AudioContextの状態を定期的にチェックし、suspendedなら再開する。
+                if (bgKeepAliveRef.current) clearInterval(bgKeepAliveRef.current);
+                bgKeepAliveRef.current = setInterval(() => {
+                    if (!isPlayingRef.current) return;
+                    // AudioContextがsuspendedになっていたら再開
+                    audioMgr.current.ensureContextRunning();
+                    // 環境音が止まっていたら再開
+                    if (audioMgr.current.envFileElement) {
+                        const el = audioMgr.current.envFileElement;
+                        if (el.paused && el.src) {
+                            el.play().catch(() => {});
+                        }
+                    }
+                }, 3000);
+
                 // Timer for Auto Mode & Auto Stop
+                // Web Workerタイマーを優先使用（バックグラウンドでも正確に動作）
                 setElapsed(0);
                 if (timerRef.current) clearInterval(timerRef.current);
-                timerRef.current = setInterval(() => {
+                if (workerTimerRef.current) {
+                    workerTimerRef.current.postMessage({ cmd: 'stop' });
+                    workerTimerRef.current.terminate();
+                }
+
+                const tickHandler = () => {
                     setElapsed(prev => {
                         const next = prev + 1;
                         if (duration > 0 && next >= duration) {
@@ -1210,13 +1279,36 @@
                         }
                         return next;
                     });
-                }, 1000);
+                };
+
+                const worker = createWorkerTimer();
+                if (worker) {
+                    workerTimerRef.current = worker;
+                    worker.onmessage = () => tickHandler();
+                    worker.postMessage({ cmd: 'start', interval: 1000 });
+                } else {
+                    // フォールバック: 通常のsetInterval
+                    timerRef.current = setInterval(tickHandler, 1000);
+                }
             };
 
             const stopSession = () => {
+                isPlayingRef.current = false; // ref同期
+                window.__gammaIsPlaying = false; // グローバルフラグ
                 setIsPlaying(false);
                 audioMgr.current.cleanup(); // Stops oscillators + envFileNode
                 if (timerRef.current) clearInterval(timerRef.current);
+                if (workerTimerRef.current) {
+                    workerTimerRef.current.postMessage({ cmd: 'stop' });
+                    workerTimerRef.current.terminate();
+                    workerTimerRef.current = null;
+                }
+
+                // keepAlive停止
+                if (bgKeepAliveRef.current) {
+                    clearInterval(bgKeepAliveRef.current);
+                    bgKeepAliveRef.current = null;
+                }
 
                 // Wake Lock解放
                 if (wakeLockRef.current) {
@@ -1429,6 +1521,56 @@
                     } else {
                         targetFreq = 6.68 + (1.82 * ((elapsed - p3) / (totalSec - p3)));
                     }
+                } else if (currentMode.id === 'fatigue_sleep_flow') {
+                    // Fatigue Recovery & Sleep Flow (60min base)
+                    // 1日の脳と身体の疲労を段階的に解消し、ゆっくりと眠りにつくプログラム
+                    // Phase 1 (0-9min/15%): 12Hz→10Hz SMR波で活動脳を穏やかに鎮静
+                    // Phase 2 (15-35%): 10Hz→7.83Hz シューマン共振で心身の緊張をリセット
+                    // Phase 3 (35-60%): 7.83Hz→4Hz 深いシータ波で疲労物質の排出を促進
+                    // Phase 4 (60-80%): 4Hz→2Hz デルタ波領域で身体の修復・回復
+                    // Phase 5 (80-100%): 2Hz→0.5Hz 深い眠りへゆっくり誘導
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.15;
+                    const p2 = totalSec * 0.35;
+                    const p3 = totalSec * 0.60;
+                    const p4 = totalSec * 0.80;
+
+                    if (elapsed < p1) {
+                        targetFreq = 12 - (2 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 10 - (2.17 * ((elapsed - p1) / (p2 - p1)));
+                    } else if (elapsed < p3) {
+                        targetFreq = 7.83 - (3.83 * ((elapsed - p2) / (p3 - p2)));
+                    } else if (elapsed < p4) {
+                        targetFreq = 4 - (2 * ((elapsed - p3) / (p4 - p3)));
+                    } else {
+                        targetFreq = 2 - (1.5 * ((elapsed - p4) / (totalSec - p4)));
+                    }
+                } else if (currentMode.id === 'schumann_flow') {
+                    // Schumann Resonance Flow (60min base)
+                    // 地球固有の共振周波数（シューマン共振）を中心に、心身を地球のリズムと同調させるプログラム
+                    // Phase 1 (0-15%): 10Hz→7.83Hz アルファ波から基本シューマン共振へ降下
+                    // Phase 2 (15-50%): 7.83Hz維持 基本シューマン共振に深く浸る
+                    // Phase 3 (50-70%): 7.83Hz→14.3Hz 第2高調波（14.3Hz）へ上昇・活性化
+                    // Phase 4 (70-85%): 14.3Hz→7.83Hz 基本共振へ回帰
+                    // Phase 5 (85-100%): 7.83Hz維持 安定した共振状態で統合
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.15;
+                    const p2 = totalSec * 0.50;
+                    const p3 = totalSec * 0.70;
+                    const p4 = totalSec * 0.85;
+
+                    if (elapsed < p1) {
+                        targetFreq = 10 - (2.17 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 7.83;
+                    } else if (elapsed < p3) {
+                        targetFreq = 7.83 + (6.47 * ((elapsed - p2) / (p3 - p2)));
+                    } else if (elapsed < p4) {
+                        targetFreq = 14.3 - (6.47 * ((elapsed - p3) / (p4 - p3)));
+                    } else {
+                        targetFreq = 7.83;
+                    }
                 } else {
                     targetFreq = currentMode.target;
                 }
@@ -1469,6 +1611,8 @@
                     case 'sleep_flow': return "不安を取り除く8Hzからスタートし、シューマン共振(7.83Hz)でストレスを解消。その後深い睡眠のデルタ波へ誘う安眠フローです。";
                     case 'deep_meditation_flow': return "日常の意識状態から深い瞑想状態（シータ波4Hz）へ誘導し、最後にガンマ波40Hzで至高の覚醒体験をもたらす瞑想フローです。";
                     case 'refresh_flow': return "短時間で脳をシューマン共振で急速に休めた後、SMR波でシャキッと目覚める。パワーナップやリフレッシュに最適です。";
+                    case 'fatigue_sleep_flow': return "１日の脳と身体の疲労を段階的に解消する安眠プログラムです。SMR波(12Hz)で活動状態の脳を穏やかに鎮め、シューマン共振(7.83Hz)で心身の緊張をリセット。深いシータ波(4Hz)で疲労物質の排出を促し、デルタ波(2Hz→0.5Hz)でゆっくりと深い眠りへ誘導します。就寝30分前の使用がおすすめです。";
+                    case 'schumann_flow': return "地球固有の共振周波数「シューマン共振(7.83Hz)」を中心にしたプログラムです。アルファ波からシューマン共振へ降下し、深く浸った後、第2高調波(14.3Hz)で脳を活性化。再び基本共振に戻り統合します。地球のリズムと同調することで自律神経のバランスが整い、心身のストレスが解消されます。";
                     case 'power_focus_flow': return "SMR波(14Hz)で集中の基礎を作り、そこからガンマ波(40Hz)へ滑らかに移行。『ゾーン』に入る最強の集中フローです。";
                     case 'happy_flow': return "アルファ波(10Hz)で心を落ち着かせた後、SMR波(12.5Hz)で幸福感を引き出し、低ベータ波(15Hz)で明るい活力を最大化。最後にアルファ波に戻り、ポジティブな気分を定着させるハッピーフローです。";
                     case 'happiness': return "12.5HzのSMR波。セロトニンやドーパミンの分泌を促し、自然な幸福感と心の安定をもたらします。気分が沈んだ時や、前向きな気持ちになりたい時に。";
@@ -1906,15 +2050,29 @@
 
         // --- バックグラウンド再生維持: visibilitychange対策 ---
         document.addEventListener('visibilitychange', () => {
-            // ページが非表示になった時、AudioContextを再開する
             if (document.hidden) {
-                // DOMが非表示でもAudioContextを維持
+                // ページが非表示になった時: メディア要素の再生を維持
                 const contexts = document.querySelectorAll('video, audio');
                 contexts.forEach(el => {
                     if (el.paused && el.dataset.wasPlaying === 'true') {
                         el.play().catch(() => { });
                     }
                 });
+            } else {
+                // ページが再表示された時: AudioContextとWake Lockを復旧
+                // 一時停止されたメディア要素を再生
+                const mediaElements = document.querySelectorAll('video, audio');
+                mediaElements.forEach(el => {
+                    if (el.paused && el.dataset.wasPlaying === 'true') {
+                        el.play().catch(() => { });
+                    }
+                });
+
+                // Wake Lockの再取得（ページが再表示されるとWake Lockは自動解放される）
+                // window.__gammaIsPlaying はReact内のstartSession/stopSessionで管理
+                if ('wakeLock' in navigator && window.__gammaIsPlaying) {
+                    navigator.wakeLock.request('screen').catch(() => { });
+                }
             }
         });
 
