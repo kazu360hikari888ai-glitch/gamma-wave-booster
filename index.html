@@ -441,6 +441,17 @@
                 ]
             },
             {
+                id: 'mental_group', label: '🌱 メンタル改善', color: '#10b981',
+                modes: [
+                    { id: 'mental_refresh_flow', label: 'メンタルリフレッシュ', desc: '嫌な気分を手放し → 安心感へ導く', color: '#059669', target: 'variable', flow: true },
+                    { id: 'mood_refresh', label: '気分リフレッシュ', desc: 'SMR波 12Hz｜嫌な気分をリセット', color: '#34d399', target: 12 },
+                    { id: 'release_obsession', label: 'こだわりの解放', desc: 'シータ波 6Hz｜固執を手放す', color: '#6ee7b7', target: 6 },
+                    { id: 'release_rumination', label: 'とらわれの解放', desc: '低シータ波 5Hz｜反すうを止める', color: '#a7f3d0', target: 5 },
+                    { id: 'feeling_okay', label: '安心・大丈夫', desc: 'アルファ波 9Hz｜大丈夫という感覚', color: '#4ade80', target: 9 },
+                    { id: 'self_compassion', label: '自己受容・許し', desc: 'シータ-アルファ境界 7.5Hz', color: '#86efac', target: 7.5 },
+                ]
+            },
+            {
                 id: 'health_group', label: '💊 健康・痛み緩和', color: '#f43f5e',
                 modes: [
                     { id: 'pain_relief_flow', label: '痛みの緩和フロー', desc: 'リラックス → 鎮痛 → 回復促進', color: '#be123c', target: 'variable', flow: true },
@@ -1571,6 +1582,31 @@
                     } else {
                         targetFreq = 7.83;
                     }
+                } else if (currentMode.id === 'mental_refresh_flow') {
+                    // Mental Refresh Flow (60min base)
+                    // 嫌な気分やネガティブな思考パターンを段階的にリセットし、安心感へ導くプログラム
+                    // Phase 1 (0-15%): 10Hz→12Hz アルファ→SMR波で気分を浮上させる
+                    // Phase 2 (15-35%): 12Hz→7.83Hz シューマン共振でグラウンディング・思考ノイズを鎮静
+                    // Phase 3 (35-55%): 7.83Hz→5Hz 低シータ波でこだわり・とらわれを溶かす
+                    // Phase 4 (55-75%): 5Hz→7.5Hz シータ-アルファ境界で自己受容・許しの状態へ
+                    // Phase 5 (75-100%): 7.5Hz→9Hz 安定したアルファ波で「大丈夫」という安心感を定着
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.15;
+                    const p2 = totalSec * 0.35;
+                    const p3 = totalSec * 0.55;
+                    const p4 = totalSec * 0.75;
+
+                    if (elapsed < p1) {
+                        targetFreq = 10 + (2 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 12 - (4.17 * ((elapsed - p1) / (p2 - p1)));
+                    } else if (elapsed < p3) {
+                        targetFreq = 7.83 - (2.83 * ((elapsed - p2) / (p3 - p2)));
+                    } else if (elapsed < p4) {
+                        targetFreq = 5 + (2.5 * ((elapsed - p3) / (p4 - p3)));
+                    } else {
+                        targetFreq = 7.5 + (1.5 * ((elapsed - p4) / (totalSec - p4)));
+                    }
                 } else {
                     targetFreq = currentMode.target;
                 }
@@ -1634,6 +1670,12 @@
                     case 'stress': return "7.83Hzのシューマン共振。地球の定常波と同調し、自律神経のバランスを整えます。";
                     case 'autonomic': return "6.68Hzの調和周波数。シューマン共振(7.83Hz)より深い意識状態へ導き、脳波をシータ波領域に同調させます。交感神経の過緊張を解き、心拍・血流を安定させ、『ゼロポイント・フィールド』への内的アクセスを促進。思考のノイズを静め、自己治癒力を引き出す根源的な地球の振動です。";
                     case 'anxiety': return "8Hzの低アルファ波。不安を取り除き、安心感を得たい時に。";
+                    case 'mental_refresh_flow': return "嫌な気分やネガティブな思考パターンを段階的にリセットするメンタルケアフローです。まずSMR波(12Hz)で沈んだ気分を浮上させ、シューマン共振(7.83Hz)で思考ノイズを鎮静。低シータ波(5Hz)でこだわりやとらわれを溶かし、シータ-アルファ境界(7.5Hz)で自己受容を促進。最後にアルファ波(9Hz)で「大丈夫」という安心感を定着させます。";
+                    case 'mood_refresh': return "12HzのSMR波。嫌な気分やモヤモヤした感情をリセットし、前向きな状態へ切り替えます。脳の感情調整機能を活性化し、ネガティブな感情パターンから抜け出すのを助けます。気分が沈んだ時、イライラした時に。";
+                    case 'release_obsession': return "6Hzのシータ波。「〜すべき」「〜でなければ」という固執した思考パターンを緩め、柔軟な視点を取り戻します。シータ波は無意識レベルに働きかけ、こだわりの根本にある緊張を解きほぐします。完璧主義や強いこだわりに悩む時に。";
+                    case 'release_rumination': return "5Hzの低シータ波。過去の出来事や心配事を何度も繰り返し考えてしまう「反すう思考」のループを断ち切ります。意識を深いリラックス状態へ導き、思考の反復パターンを自然に手放せるようにします。考えすぎて眠れない時、過去にとらわれている時に。";
+                    case 'feeling_okay': return "9Hzのアルファ波。「大丈夫」「何とかなる」という根拠のない安心感と自己肯定感を引き出す周波数です。不安や心配を和らげ、穏やかな自信を取り戻します。漠然とした不安がある時、自分を信じたい時に。";
+                    case 'self_compassion': return "7.5Hzのシータ-アルファ境界波。自分自身への批判や厳しさを和らげ、ありのままの自分を受け入れる「自己受容」の状態へ導きます。シューマン共振(7.83Hz)に近い周波数で地球のリズムとも調和し、深い許しと自己慈愛を促進します。自分を責めてしまう時、心が疲れた時に。";
                     case 'meditation': return "6Hzの低シータ波。深い内観、マインドフルネス瞑想の補助に。";
                     case 'sleep': return "1Hzのデルタ波。夢を見ない深い睡眠（ノンレム睡眠）を促します。";
                     default: return "";
