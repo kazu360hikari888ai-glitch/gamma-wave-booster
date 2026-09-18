@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="description" content="脳波誘導アプリ。バイノーラルビートで集中・リラックス・睡眠をサポート。">
     <title>脳波ブースター Pro | Gamma Wave Booster</title>
 
@@ -12,15 +12,11 @@
         default-src 'self';
         script-src 'self' 'unsafe-inline'
             https://cdn.tailwindcss.com
-            https://unpkg.com
-            https://www.gstatic.com;
+            https://unpkg.com;
         style-src 'self' 'unsafe-inline'
             https://fonts.googleapis.com;
         font-src https://fonts.gstatic.com;
-        connect-src 'self' blob:
-            https://*.googleapis.com
-            https://*.firebaseio.com
-            https://*.firebaseapp.com;
+        connect-src 'self' blob:;
         img-src 'self' data: blob:;
         media-src 'self' blob:;
         worker-src 'self';
@@ -60,13 +56,6 @@
     <script crossorigin="anonymous" integrity="sha384-KCD0A3BqTNZfWlXJcL7fKzDri97vicyNr4NUIr0vX6K9PZ0X5hOTeEbFh99jPEST"
         src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
 
-    <!-- Firebase SDKs (SRI付き) -->
-    <script crossorigin="anonymous" integrity="sha384-ViccRjS0k/lvYsrtaKXk+ES61/4PAZlFI/mPHmLC1YwzKOAIbXbi5ZXDzcm3F8gH"
-        src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script crossorigin="anonymous" integrity="sha384-+/4lqMnmLqwbdHXshvGDmBTeWlNoPRdjXi4ZsiBj10EhQXaTBe3RF5JZktdSjug6"
-        src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script crossorigin="anonymous" integrity="sha384-7TetnPNdXXu6qURzIEXWCwpXedGGBJSXIR5Cv0gOWTB34UD5TxPHx33PhjA6wFQ3"
-        src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
     <style>
         /* Custom Styles for Glassmorphism & Animations */
@@ -326,21 +315,6 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- Firebase Configuration Placeholder ---
-        // NOTE: Replace these values with your actual Firebase project config.
-        const firebaseConfig = {
-            apiKey: "API_KEY",
-            authDomain: "PROJECT_ID.firebaseapp.com",
-            projectId: "PROJECT_ID",
-            storageBucket: "PROJECT_ID.appspot.com",
-            messagingSenderId: "SENDER_ID",
-            appId: "APP_ID"
-        };
-
-        // Initialize Firebase (Safely check if config is valid)
-        let db = null;
-        let auth = null;
-
         // --- Debug Logger ---
         const debugLogs = [];
         const originalLog = console.log;
@@ -356,17 +330,6 @@
 
         console.log = (...args) => { originalLog(...args); logToBuffer('LOG', args); };
         console.error = (...args) => { originalError(...args); logToBuffer('ERR', args); };
-
-        try {
-            if (firebaseConfig.apiKey !== "API_KEY") {
-                firebase.initializeApp(firebaseConfig);
-                db = firebase.firestore();
-                auth = firebase.auth();
-                auth.signInAnonymously().catch(console.error);
-            }
-        } catch (e) {
-            console.warn("Firebase Init Failed:", e);
-        }
 
         // --- Constants ---
         const CARRIER_FREQ = 151; // Hz - Masaki Kazumi Theory
@@ -550,9 +513,15 @@
                 this.envFileElement = null; // <audio>要素
                 this._envFileBlobUrl = null; // Blobから生成したObject URL（廃棄用）
                 this._currentEnvVol = undefined; // 音量保持用
+
+                // フェードアウト中の破棄予約（再生を押し直したらキャンセルする）
+                this._fadeTimer = null;
+                this._envFadeTimer = null;
             }
 
             init() {
+                // フェードアウト中に再開された場合は、破棄予約を取り消して既存のctxを使い回す
+                this.cancelPendingFade();
                 if (!this.ctx) {
                     this.ctx = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -671,61 +640,6 @@
                 }
             }
 
-            cleanup() {
-                if (this.oscL) {
-                    try { this.oscL.stop(); } catch (e) { }
-                    try { this.oscL.disconnect(); } catch (e) { }
-                    this.oscL = null;
-                }
-                if (this.oscR) {
-                    try { this.oscR.stop(); } catch (e) { }
-                    try { this.oscR.disconnect(); } catch (e) { }
-                    this.oscR = null;
-                }
-                this.stopNoise();
-                if (this.ctx) {
-                    this.ctx.close().catch(e => console.error(e));
-                    this.ctx = null;
-                }
-            }
-
-            setVolumes(masterVol, envVol, fade = false) {
-                if (!this.ctx) return;
-                const now = this.ctx.currentTime;
-
-                // Volume Scaling
-                const normMaster = masterVol / 100;
-                const actualMaster = Math.pow(normMaster, 2) * 0.1;
-
-                // Master Gain
-                if (this.masterGain) {
-                    if (fade) {
-                        try {
-                            this.masterGain.gain.setValueAtTime(0, now);
-                            this.masterGain.gain.linearRampToValueAtTime(actualMaster, now + 3);
-                        } catch (e) { }
-                    } else {
-                        if (masterVol <= 0) {
-                            try {
-                                this.masterGain.gain.cancelScheduledValues(now);
-                                this.masterGain.gain.setTargetAtTime(0, now, 0.1);
-                            } catch (e) { }
-                        } else {
-                            try { this.masterGain.gain.setTargetAtTime(actualMaster, now, 0.5); } catch (e) { }
-                        }
-                    }
-                }
-
-                // Env Gain
-                if (this.envGain) {
-                    if (envVol <= 0) {
-                        try { this.envGain.gain.setTargetAtTime(0, now, 0.1); } catch (e) { }
-                    } else {
-                        try { this.envGain.gain.setTargetAtTime(envVol / 100, now, 0.5); } catch (e) { }
-                    }
-                }
-            }
-
             // ─── 環境音ファイル: HTMLMediaElement独立再生方式 ───
             // AudioContextへのルーティング(createMediaElementSource)を行うと
             // 特にAndroid Chromeの仕様により、バックグラウンド時にOSがメディアフォーカスを外してしまうことがある。
@@ -792,7 +706,53 @@
                 }
             }
 
+            // 破棄予約と環境音フェードのタイマーを取り消す
+            cancelPendingFade() {
+                if (this._fadeTimer) { clearTimeout(this._fadeTimer); this._fadeTimer = null; }
+                if (this._envFadeTimer) { clearInterval(this._envFadeTimer); this._envFadeTimer = null; }
+            }
+
+            // セッション終了時に音をいきなり切らず、フェードアウトしてから破棄する。
+            // 開始時は3秒のフェードインがあるのに終了が即時だと、
+            // 特に安眠・鎮痛モードで音がブツッと切れて眠りを妨げるため。
+            fadeOutAndCleanup(seconds = 3) {
+                if (!this.ctx) { this.cleanup(); return; }
+                this.cancelPendingFade();
+
+                const now = this.ctx.currentTime;
+                const rampToZero = (param) => {
+                    try {
+                        param.cancelScheduledValues(now);
+                        param.setValueAtTime(param.value, now);
+                        // linearRampToValueAtTime は 0 ちょうどを嫌うので極小値へ
+                        param.linearRampToValueAtTime(0.0001, now + seconds);
+                    } catch (e) { }
+                };
+                if (this.masterGain) rampToZero(this.masterGain.gain);
+                if (this.envGain) rampToZero(this.envGain.gain);
+
+                // 環境音ファイルはAudioContextの外（<video>要素）で鳴っているので個別にフェードする
+                const el = this.envFileElement;
+                if (el) {
+                    const startVol = el.volume;
+                    const stepMs = 50;
+                    const steps = Math.max(1, Math.round((seconds * 1000) / stepMs));
+                    let i = 0;
+                    this._envFadeTimer = setInterval(() => {
+                        i++;
+                        try { el.volume = Math.max(0, startVol * (1 - i / steps)); } catch (e) { }
+                        if (i >= steps) { clearInterval(this._envFadeTimer); this._envFadeTimer = null; }
+                    }, stepMs);
+                }
+
+                this._fadeTimer = setTimeout(() => {
+                    this._fadeTimer = null;
+                    this.cleanup();
+                }, seconds * 1000 + 150);
+            }
+
             cleanup() {
+                this.cancelPendingFade();
                 if (this.oscL) {
                     try { this.oscL.stop(); } catch (e) { }
                     try { this.oscL.disconnect(); } catch (e) { }
@@ -824,6 +784,8 @@
                 if (this.masterGain) {
                     if (fade) {
                         try {
+                            // フェードアウト途中で再開された場合、残っている予約を消してから上げ直す
+                            this.masterGain.gain.cancelScheduledValues(now);
                             this.masterGain.gain.setValueAtTime(0, now);
                             this.masterGain.gain.linearRampToValueAtTime(actualMaster, now + 3);
                         } catch (e) { }
@@ -841,6 +803,7 @@
 
                 // Env Gain
                 if (this.envGain) {
+                    try { this.envGain.gain.cancelScheduledValues(now); } catch (e) { }
                     if (envVol <= 0) {
                         try { this.envGain.gain.setTargetAtTime(0, now, 0.1); } catch (e) { }
                     } else {
@@ -875,6 +838,12 @@
         const IconPause = () => (
             <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+            </svg>
+        );
+
+        const IconStop = () => (
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 6h12v12H6z" />
             </svg>
         );
 
@@ -1048,7 +1017,8 @@
                     <div className="glass-panel w-full max-w-sm rounded-2xl p-6 space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto" style={{ backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.2)' }}>
                         <div className="flex justify-between items-center sticky top-0 bg-[#1e293b]/95 pb-2 border-b border-white/10 z-10">
                             <h2 className="text-lg font-bold text-white">詳細設定</h2>
-                            <button onClick={onClose} className="text-white/50 hover:text-white px-2 text-xl">✕</button>
+                            <button onClick={onClose} aria-label="設定を閉じる"
+                                className="text-white/50 hover:text-white px-2 text-xl">✕</button>
                         </div>
 
 
@@ -1182,6 +1152,9 @@
 
             // Timer State for Auto Mode
             const [elapsed, setElapsed] = useState(0); // seconds
+            // 一時停止中（経過時間を保持したまま音だけ止めている状態）
+            const [isPaused, setIsPaused] = useState(false);
+            const elapsedRef = useRef(0);             // 常に最新のelapsedを保持するref
             const [duration, setDuration] = useState(3600); // seconds (default 60m)
             const timerRef = useRef(null);
             const wakeLockRef = useRef(null);
@@ -1320,22 +1293,23 @@
 
 
             // Handle Play/Pause
+            // 再生中に押すと「一時停止」（経過時間を保持）。停止したい場合は停止ボタンを使う。
             const togglePlay = () => {
-                const nextState = !isPlaying;
-                setIsPlaying(nextState);
-
-                if (nextState) {
-                    audioMgr.current.init();
-                    startSession();
-                } else {
-                    stopSession();
+                if (isPlaying) {
+                    pauseSession();
+                    return;
                 }
+                audioMgr.current.init();
+                const resumeFrom = isPaused ? elapsed : 0;
+                setIsPaused(false);
+                setIsPlaying(true);
+                startSession(resumeFrom);
             };
 
-            const startSession = () => {
+            const startSession = (resumeFrom = 0) => {
                 isPlayingRef.current = true; // ref同期（バックグラウンド用）
                 window.__gammaIsPlaying = true; // グローバルフラグ（visibilitychange用）
-                updateFrequency(); // Start oscillators
+                updateFrequency(resumeFrom); // Start oscillators
 
                 // Fade in master volume
                 audioMgr.current.setVolumes(masterVol, envVol, true);
@@ -1351,7 +1325,7 @@
                         artist: '脳波ブースター Pro',
                         album: 'Gamma Wave Booster',
                     });
-                    navigator.mediaSession.setActionHandler('pause', () => stopSession());
+                    navigator.mediaSession.setActionHandler('pause', () => pauseSession());
                     navigator.mediaSession.setActionHandler('play', () => { });
                 }
 
@@ -1382,8 +1356,9 @@
                 // Timer for Auto Mode & Auto Stop
                 // Date.now()ベースで経過秒を計算することで、
                 // クロージャーの陳腐化・Reactのバッチ更新・setIntervalのドリフトを全て回避する
-                setElapsed(0);
-                sessionStartRef.current = Date.now();
+                setElapsed(resumeFrom);
+                elapsedRef.current = resumeFrom;
+                sessionStartRef.current = Date.now() - resumeFrom * 1000;
                 if (timerRef.current) clearInterval(timerRef.current);
 
                 timerRef.current = setInterval(() => {
@@ -1396,12 +1371,17 @@
                 }, 1000);
             };
 
-            const stopSession = () => {
+            // セッションの終了処理。
+            // pause=true なら経過時間を保持し、次回の再生で続きから再開する。
+            const endSession = ({ pause = false, fadeSeconds = 3 } = {}) => {
                 isPlayingRef.current = false; // ref同期
                 window.__gammaIsPlaying = false; // グローバルフラグ
                 sessionStartRef.current = null; // タイマー無効化
                 setIsPlaying(false);
-                audioMgr.current.cleanup(); // Stops oscillators + envFileNode
+                setIsPaused(pause);
+                if (!pause) { setElapsed(0); elapsedRef.current = 0; }
+                // いきなり切らずにフェードアウトしてから破棄する
+                audioMgr.current.fadeOutAndCleanup(fadeSeconds);
                 if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
 
                 // keepAlive停止
@@ -1422,8 +1402,15 @@
                 }
             };
 
-            // durationRefを常に最新のdurationに同期
+            // 完全停止（経過時間をリセット）。タイマー満了時とストップボタンから呼ばれる。
+            const stopSession = () => endSession({ pause: false, fadeSeconds: 3 });
+            // 一時停止（経過時間を保持）。フェードは短めにして操作感を保つ。
+            const pauseSession = () => endSession({ pause: true, fadeSeconds: 1.5 });
+
+            // durationRef / elapsedRef を常に最新値に同期
+            // （updateFrequencyの引数省略時にこのrefを使うため、周波数更新のuseEffectより先に置くこと）
             useEffect(() => { durationRef.current = duration; }, [duration]);
+            useEffect(() => { elapsedRef.current = elapsed; }, [elapsed]);
 
             // Watch for volume changes
             useEffect(() => {
@@ -1463,7 +1450,9 @@
                 }
             };
 
-            const updateFrequency = () => {
+            // elapsedOverride を渡すとその経過秒で計算する（開始・再開時に古い値を使わないため）
+            const updateFrequency = (elapsedOverride) => {
+                const elapsed = elapsedOverride !== undefined ? elapsedOverride : elapsedRef.current;
                 let targetFreq = 0;
 
                 if (currentMode.id === 'auto') {
@@ -2069,7 +2058,9 @@
                                 </h1>
                                 <p className="text-[10px] text-white/30 tracking-wider">Gamma Wave Booster Pro</p>
                             </div>
-                            <button onClick={() => setShowSettings(!showSettings)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+                            <button onClick={() => setShowSettings(!showSettings)}
+                                aria-label="設定を開く" title="設定"
+                                className="p-2 rounded-full hover:bg-white/10 transition-colors">
                                 <IconSettings />
                             </button>
                         </header>
@@ -2078,15 +2069,15 @@
                         <div className="flex flex-col items-center justify-center py-3">
                             <div className="relative">
                                 <div className="text-6xl font-mono font-thin tracking-wider text-white">
-                                    {isPlaying ? formatTime(Math.max(0, duration - elapsed)) : formatTime(duration)}
+                                    {(isPlaying || isPaused) ? formatTime(Math.max(0, duration - elapsed)) : formatTime(duration)}
                                 </div>
                                 {isPlaying && (
                                     <div className="absolute -inset-4 rounded-full border border-white/10 pulse-ring pointer-events-none"></div>
                                 )}
                             </div>
 
-                            {/* Duration Selectors */}
-                            {!isPlaying && (
+                            {/* Duration Selectors（再生中・一時停止中は変更させない） */}
+                            {!isPlaying && !isPaused && (
                                 <div className="flex flex-col items-center mt-4 w-full">
                                     <span className="text-[10px] uppercase text-white/40 tracking-widest mb-2">時間設定</span>
                                     <div className="flex gap-2">
@@ -2094,6 +2085,8 @@
                                             <button
                                                 key={m}
                                                 onClick={() => setDuration(m * 60)}
+                                                aria-label={`セッション時間を${m}分にする`}
+                                                aria-pressed={duration === m * 60}
                                                 className={`text-sm px-3 py-1.5 rounded-lg border transition-all duration-300 ${duration === m * 60
                                                     ? 'bg-white text-black font-bold border-white shadow-[0_0_20px_rgba(255,255,255,0.2)]'
                                                     : 'border-white/15 text-white/50 hover:bg-white/10 hover:text-white hover:border-white/30'
@@ -2137,6 +2130,7 @@
                                     <button
                                         key={group.id}
                                         onClick={() => setSelectedGroup(group.id)}
+                                        aria-pressed={selectedGroup === group.id}
                                         className={`group-tab ${selectedGroup === group.id ? 'active' : ''}`}
                                         style={selectedGroup === group.id ? { borderColor: group.color + '60', boxShadow: `0 2px 12px ${group.color}20` } : {}}
                                     >
@@ -2188,6 +2182,9 @@
                                         <button
                                             key={opt.id}
                                             onClick={() => !isDisabled && setSelectedEnv(opt.id)}
+                                            aria-label={`環境音: ${hasFile ? fileInfo.name : opt.label}`}
+                                            aria-pressed={selectedEnv === opt.id}
+                                            aria-disabled={isDisabled}
                                             className={`py-1.5 px-1 rounded-lg text-[10px] font-medium border transition-all duration-200 truncate ${selectedEnv === opt.id
                                                 ? 'bg-white/10 border-white/25 text-white shadow-sm'
                                                 : isDisabled
@@ -2214,6 +2211,8 @@
                                     <button
                                         key={opt.id}
                                         onClick={() => setBreathId(opt.id)}
+                                        aria-label={`呼吸ガイド: ${opt.label}`}
+                                        aria-pressed={breathId === opt.id}
                                         className={`py-1.5 px-1 rounded-lg text-[10px] font-medium border transition-all duration-200 truncate ${breathId === opt.id
                                             ? 'bg-white/10 border-white/25 text-white shadow-sm'
                                             : 'border-white/5 text-white/35 hover:bg-white/5 hover:text-white/60'
@@ -2240,6 +2239,7 @@
                                 </div>
                                 <input
                                     type="range" min="0" max="100"
+                                    aria-label="脳波誘導の音量"
                                     value={masterVol}
                                     onChange={(e) => setMasterVol(Number(e.target.value))}
                                     className="w-full"
@@ -2252,6 +2252,7 @@
                                 </div>
                                 <input
                                     type="range" min="0" max="100"
+                                    aria-label="環境音の音量"
                                     value={envVol}
                                     onChange={(e) => setEnvVol(Number(e.target.value))}
                                     className="w-full"
@@ -2260,13 +2261,14 @@
                         </div>
 
                         {/* Main Action Button */}
-                        <div className="flex justify-center pt-1 pb-2">
+                        <div className="flex justify-center items-center gap-4 pt-1 pb-2">
                             <div className="relative">
                                 {isPlaying && (
                                     <div className="absolute inset-0 rounded-full pulse-ring" style={{ borderColor: currentMode.color, borderWidth: '2px', borderStyle: 'solid' }}></div>
                                 )}
                                 <button
                                     onClick={togglePlay}
+                                    aria-label={isPlaying ? '一時停止' : (isPaused ? '続きから再開' : '再生')}
                                     className={`relative btn-glow p-5 rounded-full transition-all duration-500 transform hover:scale-105 active:scale-95 ${isPlaying ? 'text-white' : 'bg-white/10 text-white'
                                         }`}
                                     style={{
@@ -2278,7 +2280,25 @@
                                     {isPlaying ? <IconPause /> : <IconPlay />}
                                 </button>
                             </div>
+
+                            {/* 停止（経過時間をリセット）。再生中・一時停止中のみ表示 */}
+                            {(isPlaying || isPaused) && (
+                                <button
+                                    onClick={stopSession}
+                                    aria-label="停止して最初に戻す"
+                                    title="停止して最初に戻す"
+                                    className="p-3 rounded-full border border-white/15 text-white/50 hover:text-white hover:bg-white/10 hover:border-white/30 transition-all duration-300 active:scale-95"
+                                >
+                                    <IconStop />
+                                </button>
+                            )}
                         </div>
+
+                        {isPaused && (
+                            <p className="text-center text-[11px] text-white/45 -mt-3">
+                                一時停止中 — 再生ボタンで続きから再開します
+                            </p>
+                        )}
                     </div>
 
                     {/* Save Toast */}
