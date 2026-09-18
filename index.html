@@ -373,6 +373,15 @@
                 ]
             },
             {
+                id: 'training_group', label: '🏋️ トレーニング', color: '#0ea5e9',
+                modes: [
+                    { id: 'workout_prime_flow', label: '運動前・スイッチON', desc: 'アルファ → ベータ → ガンマで出力を上げる', color: '#0284c7', target: 'variable', flow: true },
+                    { id: 'running_zone_flow', label: 'ランニング・ゾーン', desc: '歩調と呼吸を整え → アルファ波10Hzを維持', color: '#0ea5e9', target: 'variable', flow: true },
+                    { id: 'set_rest_flow', label: 'セット間レスト', desc: '一度鎮めて → 次のセットへ上げ直す', color: '#38bdf8', target: 'variable', flow: true },
+                    { id: 'cooldown_flow', label: '運動後のクールダウン', desc: '高ぶった交感神経を鎮め → 回復モードへ', color: '#7dd3fc', target: 'variable', flow: true },
+                ]
+            },
+            {
                 id: 'relax_group', label: '🌿 リラックス・癒し', color: '#14b8a6',
                 modes: [
                     { id: 'peace_flow', label: 'やすらぎフロー', desc: 'リラックス → 共振 → 深い平安 → 安定', color: '#2dd4bf', target: 'variable', flow: true },
@@ -489,7 +498,7 @@
 
         // 「おまかせ」で選ばれる呼吸パターン（グループ単位の既定）
         const GROUP_BREATH = {
-            auto_group: 'coherent', focus_group: 'box', relax_group: 'coherent',
+            auto_group: 'coherent', focus_group: 'box', training_group: 'box', relax_group: 'coherent',
             mood_group: 'coherent', mental_group: '478', health_group: 'shoulder',
             meditation_group: 'coherent', sleep_group: '478',
         };
@@ -500,6 +509,8 @@
             pain_relief: 'shoulder', muscle_relax: 'shoulder', headache: 'coherent',
             sleep: '478', sleep_flow: '478', fatigue_sleep_flow: '478',
             focus: 'box', power_focus_flow: 'box', learning: 'box',
+            workout_prime_flow: 'box', set_rest_flow: 'box',
+            running_zone_flow: 'coherent', cooldown_flow: '478',
         };
 
         // breathId ('off' | 'auto' | パターンID) と選択中モードから実際のパターンを決める
@@ -2131,6 +2142,70 @@
                     } else {
                         targetFreq = 4 + (6 * ((elapsed - p3) / (totalSec - p3)));
                     }
+                } else if (currentMode.id === 'workout_prime_flow') {
+                    // Workout Prime Flow (20min想定・時間に比例)
+                    // Phase 1 (0-25%):   10Hz→14Hz アルファからSMRへ、覚醒を立ち上げる
+                    // Phase 2 (25-60%):  14Hz→20Hz ベータ波で身体を動かす準備
+                    // Phase 3 (60-85%):  20Hz→30Hz 高ベータ、出力を引き上げる
+                    // Phase 4 (85-100%): 30Hz→40Hz ガンマ波で集中をピークに
+                    const totalSec = duration > 0 ? duration : 1200;
+                    const p1 = totalSec * 0.25;
+                    const p2 = totalSec * 0.60;
+                    const p3 = totalSec * 0.85;
+
+                    if (elapsed < p1) {
+                        targetFreq = 10 + (4 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 14 + (6 * ((elapsed - p1) / (p2 - p1)));
+                    } else if (elapsed < p3) {
+                        targetFreq = 20 + (10 * ((elapsed - p2) / (p3 - p2)));
+                    } else {
+                        targetFreq = 30 + (10 * ((elapsed - p3) / (totalSec - p3)));
+                    }
+                } else if (currentMode.id === 'running_zone_flow') {
+                    // Running Zone Flow
+                    // Phase 1 (0-20%):   12Hz→10Hz 走り出しの乱れを整える
+                    // Phase 2 (20-100%): 10Hz維持 アルファ波のゾーンを保つ
+                    const totalSec = duration > 0 ? duration : 1800;
+                    const p1 = totalSec * 0.20;
+
+                    if (elapsed < p1) {
+                        targetFreq = 12 - (2 * (elapsed / p1));
+                    } else {
+                        targetFreq = 10;
+                    }
+                } else if (currentMode.id === 'set_rest_flow') {
+                    // Set Rest Flow (2〜5分想定のV字)
+                    // Phase 1 (0-50%):   14Hz→11Hz 心拍と呼吸を落ち着かせる
+                    // Phase 2 (50-100%): 11Hz→15Hz 次のセットへ向けて上げ直す
+                    const totalSec = duration > 0 ? duration : 180;
+                    const p1 = totalSec * 0.50;
+
+                    if (elapsed < p1) {
+                        targetFreq = 14 - (3 * (elapsed / p1));
+                    } else {
+                        targetFreq = 11 + (4 * ((elapsed - p1) / (totalSec - p1)));
+                    }
+                } else if (currentMode.id === 'cooldown_flow') {
+                    // Cooldown Flow
+                    // Phase 1 (0-20%):   15Hz→12Hz 高ぶった交感神経を落とす
+                    // Phase 2 (20-45%):  12Hz→10Hz アルファ波へ
+                    // Phase 3 (45-75%):  10Hz→7.83Hz シューマン共振で自律神経を整える
+                    // Phase 4 (75-100%): 7.83Hz→6Hz 低シータで回復を促す
+                    const totalSec = duration > 0 ? duration : 1200;
+                    const p1 = totalSec * 0.20;
+                    const p2 = totalSec * 0.45;
+                    const p3 = totalSec * 0.75;
+
+                    if (elapsed < p1) {
+                        targetFreq = 15 - (3 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 12 - (2 * ((elapsed - p1) / (p2 - p1)));
+                    } else if (elapsed < p3) {
+                        targetFreq = 10 - (2.17 * ((elapsed - p2) / (p3 - p2)));
+                    } else {
+                        targetFreq = 7.83 - (1.83 * ((elapsed - p3) / (totalSec - p3)));
+                    }
                 } else if (currentMode.id === 'shoulder_relief_flow') {
                     // Shoulder / Scapula Relief Flow (60min base)
                     // Phase 1 (0-13%):    12Hz→10Hz  緊張のスイッチを切る（SMR→アルファ）
@@ -2381,6 +2456,10 @@
                     case 'happiness': return "12.5HzのSMR波。セロトニンやドーパミンの分泌を促し、自然な幸福感と心の安定をもたらします。気分が沈んだ時や、前向きな気持ちになりたい時に。";
                     case 'vitality': return "15Hzの低ベータ波。脳を程よく覚醒させ、明るく前向きなエネルギーを引き出します。朝の目覚めや気分のリフレッシュに最適です。";
                     case 'euphoria': return "11Hzのアルファ-SMR境界波。深いリラックスと程よい覚醒が合わさり、多幸感と喜びを感じやすい状態へ導きます。感謝の瞑想やポジティブシンキングのお供に。";
+                    case 'workout_prime_flow': return "トレーニング前に脳と身体のスイッチを入れるフローです。アルファ波(10Hz)からSMR波(14Hz)へ、さらにベータ波(20Hz)・高ベータ(30Hz)を経てガンマ波(40Hz)まで一本調子で引き上げます。ウォーミングアップをしながら10〜20分の使用がおすすめです。";
+                    case 'running_zone_flow': return "ランニングやウォーキング中の「ゾーン」を保つためのフローです。走り出しのSMR波(12Hz)で歩調と呼吸の乱れを整えたあと、アルファ波10Hzを保ち続けます。呼吸ガイドの「整える(5-5)」と合わせると、ペースが安定します。※骨伝導イヤホンなど、周囲の音が聞こえる機器を使ってください。";
+                    case 'set_rest_flow': return "筋トレのセット間インターバル用です。SMR波(14Hz)から11Hzまで一度落として心拍と呼吸を鎮め、後半で15Hzへ上げ直して次のセットに備えます。2〜5分の短い設定で使ってください。";
+                    case 'cooldown_flow': return "運動後のクールダウンと回復のためのフローです。低ベータ波(15Hz)で高ぶった交感神経を鎮め、アルファ波(10Hz)からシューマン共振(7.83Hz)へ降下して自律神経のバランスを整えます。最後は低シータ波(6Hz)で身体の回復を促します。肩まわりが張っているときは、続けて「肩・肩甲骨の緩和」を行うと効果的です。";
                     case 'shoulder_relief_flow': return "肩・肩甲骨まわりの慢性的なこりと痛みに特化したフローです。まずSMR波(12Hz)で緊張のスイッチを切り、シューマン共振(7.83Hz)で交感神経の過緊張を鎮めます。低シータ波(5Hz)で肩甲骨まわりの深部筋を弛緩させ、4Hzでエンドルフィンの分泌を促して鎮痛。最後にアルファ波(10Hz)へ戻し、血流の回復を促しながら覚醒へ導きます。呼吸ガイド「肩ゆるめ(4-2-8)」との併用が効果的です。";
                     case 'pain_relief_flow': return "まずアルファ波(10Hz)で筋緊張を緩和し、次に4Hzのシータ波でエンドルフィンの分泌を促進。深い鎮痛状態をキープした後、ゆるやかにアルファ波に戻って回復を促す、痛みの緩和に特化したフローです。";
                     case 'pain_relief': return "4Hzのシータ波。脳内エンドルフィン（天然の鎮痛物質）の分泌を促進し、痛みの感覚を和らげます。慢性痛や急性痛の緩和に。";
@@ -2678,8 +2757,8 @@
                             {!isPlaying && !isPaused && (
                                 <div className="flex flex-col items-center mt-4 w-full">
                                     <span className="t-xs uppercase text-white/40 tracking-widest mb-2">時間設定</span>
-                                    <div className="flex gap-2">
-                                        {[10, 20, 30, 60, 90].map(m => (
+                                    <div className="flex flex-wrap justify-center gap-2">
+                                        {[3, 5, 10, 20, 30, 60, 90].map(m => (
                                             <button
                                                 key={m}
                                                 onClick={() => setDuration(m * 60)}
