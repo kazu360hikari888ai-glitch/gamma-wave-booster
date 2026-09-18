@@ -10,19 +10,23 @@
 https://kazu360hikari888ai-glitch.github.io/gamma-wave-booster/
 ```
 
-### 初回だけ必要な設定（リポジトリ所有者の作業・3ステップ）
+### 初回だけ必要な設定（リポジトリ所有者の作業・3タップ）
 
 1. GitHubでこのリポジトリを開く → **Settings**（設定）
 2. 左メニューの **Pages**
-3. **Source** を **`GitHub Actions`** にする
+3. **Source** を `Deploy from a branch` にし、Branch を **`main`** / **`/ (root)`** にして **Save**
 
-これで push のたびに自動でビルド・公開されます（2〜3分）。
-進行状況は **Actions** タブで確認できます。
+1〜2分で上のURLが開けるようになります。以降、mainを更新すると自動で反映されます。
 
-> **うまくいかないときの逃げ道**
-> ビルドが失敗して公開されない場合は、**Source** を `Deploy from a branch` →
-> `main` / `/ (root)` に切り替えてください。`index.html` は単体でも動くように
-> 保たれているので、それだけで今まで通り公開されます（起動が少し遅くなるだけです）。
+> **検索には出ません。** `noindex` と `robots.txt` を入れてあるため、
+> 検索エンジンには載りません。ただし**URLを知っている人は誰でも開けます**。
+> やめたくなったら Settings → Pages で配信を停止すれば、すぐにアクセスできなくなります。
+
+> **起動を速くしたい場合（任意）**
+> `GitHub Actions` を配信元に選ぶと、JSXを事前変換した軽い版が公開されます
+> （「ビルドについて」の節を参照）。ワークフローは手動実行に設定してあるので、
+> Actionsタブから `Deploy to GitHub Pages` を実行してください。
+> うまくいかなければ `Deploy from a branch` に戻せば元通りです。
 
 ### ホーム画面に追加する（アプリのように使う）
 
@@ -148,7 +152,8 @@ https://kazu360hikari888ai-glitch.github.io/gamma-wave-booster/
 | `manifest.json` / `icons/` | PWA設定（ホーム画面への追加用） |
 | `.nojekyll` | GitHub PagesのJekyll処理を無効化 |
 | `build.js` | 配信用ビルド。JSXを事前変換して `dist/` を作る |
-| `.github/workflows/deploy.yml` | pushのたびにビルドしてPagesへ公開する |
+| `.github/workflows/deploy.yml` | ビルドしてPagesへ公開する（手動実行） |
+| `robots.txt` | 検索エンジンに載せないための指定 |
 | `Code.gs` | Google Apps Script版で使う配信スクリプト（Pages利用時は不要） |
 
 ## ⚡ ビルドについて
@@ -156,8 +161,8 @@ https://kazu360hikari888ai-glitch.github.io/gamma-wave-booster/
 `index.html` はブラウザ内のBabelでJSXを変換しているため、開くたびに
 **Babel本体（数MB）のダウンロードと2,600行の変換**が走ります。
 
-公開版ではこれを事前に済ませます。GitHub Actions が push のたびに
-`build.js` を実行し、JSXを変換した `app.js` と、Babelを読み込まない
+公開版ではこれを事前に済ませられます。Actionsタブから手動でワークフローを実行すると
+`build.js` が走り、JSXを変換した `app.js` と、Babelを読み込まない
 `index.html` を `dist/` に生成して公開します。**公開版からはBabelが丸ごと消えます。**
 
 `index.html` 自体は書き換えません。そのままブラウザで開いても、

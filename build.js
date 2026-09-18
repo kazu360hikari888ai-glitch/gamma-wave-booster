@@ -79,9 +79,11 @@ const SW_BABEL_LINE = /\s*'https:\/\/unpkg\.com\/@babel\/standalone[^']*',?\n/;
 assert(SW_BABEL_LINE.test(sw), 'sw.js にBabelのキャッシュ指定が見つかりません');
 sw = sw.replace(SW_BABEL_LINE, '\n');
 
-const SW_CORE = "    './icons/icon.svg'\n";
-assert(sw.indexOf(SW_CORE) !== -1, 'sw.js のコアアセット一覧が見つかりません');
-sw = sw.replace(SW_CORE, `    './icons/icon.svg',\n    './app.js?v=${hash}'\n`);
+// CORE_ASSETS の中身は増減しうるので、配列の閉じ括弧の直前に差し込む
+const SW_CORE_RE = /(const CORE_ASSETS = \[[\s\S]*?)(\n\];)/;
+assert(SW_CORE_RE.test(sw), 'sw.js の CORE_ASSETS 配列が見つかりません');
+sw = sw.replace(SW_CORE_RE, `$1,\n    './app.js?v=${hash}'$2`);
+assert(sw.indexOf("'./app.js?v=") !== -1, 'sw.js への app.js 追加に失敗しました');
 
 const SW_CACHE_RE = /const CACHE_NAME = '[^']*';/;
 assert(SW_CACHE_RE.test(sw), 'sw.js に CACHE_NAME が見つかりません');
@@ -99,6 +101,7 @@ fs.writeFileSync(path.join(DIST, 'app.js'), js);
 fs.writeFileSync(path.join(DIST, 'sw.js'), sw);
 fs.copyFileSync(path.join(ROOT, 'manifest.json'), path.join(DIST, 'manifest.json'));
 fs.writeFileSync(path.join(DIST, '.nojekyll'), '');
+fs.copyFileSync(path.join(ROOT, 'robots.txt'), path.join(DIST, 'robots.txt'));
 fs.cpSync(path.join(ROOT, 'icons'), path.join(DIST, 'icons'), { recursive: true });
 
 const kb = (n) => (n / 1024).toFixed(1) + ' KB';

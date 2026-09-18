@@ -1,8 +1,10 @@
 name: Deploy to GitHub Pages
 
+# 手動実行のみ。
+# Pagesの配信元を「GitHub Actions」に切り替えたときだけ使う。
+# 「ブランチから配信」の設定のまま自動実行すると毎回失敗し、
+# エラー通知が届いてしまうため、pushトリガーは意図的に外してある。
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
