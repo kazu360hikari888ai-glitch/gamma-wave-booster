@@ -430,6 +430,7 @@
                 id: 'health_group', label: '💊 健康・痛み緩和', color: '#f43f5e',
                 modes: [
                     { id: 'pain_relief_flow', label: '痛みの緩和フロー', desc: 'リラックス → 鎮痛 → 回復促進', color: '#be123c', target: 'variable', flow: true },
+                    { id: 'shoulder_relief_flow', label: '肩・肩甲骨の緩和', desc: '緊張を解き → 深部筋を弛緩 → 鎮痛 → 血流回復', color: '#fb7185', target: 'variable', flow: true },
                     { id: 'pain_relief', label: '痛みの緩和', desc: 'エンドルフィン促進 4Hz', color: '#f43f5e', target: 4 },
                     { id: 'inflammation', label: '炎症・腫れの緩和', desc: '低デルタ波 2Hz', color: '#e11d48', target: 2 },
                     { id: 'headache', label: '頭痛・偏頭痛の緩和', desc: 'アルファ波 10Hz', color: '#fb7185', target: 10 },
@@ -465,6 +466,74 @@
             { id: 'custom4', label: 'お好み4' },
             { id: 'custom5', label: 'お好み5' },
         ];
+
+        // --- Breathing Guide Patterns ---
+        // sec: そのフェーズの秒数 / to: 呼吸サークルの目標スケール（1.0=吸いきり, 0.55=吐ききり）
+        const BREATH_PATTERNS = [
+            {
+                id: 'shoulder', label: '肩ゆるめ', ratio: '4-2-8', color: '#fb7185',
+                desc: '吐く息を吸う息の倍に。吐きながら肩をストンと落とすと、肩・肩甲骨まわりのこわばりが緩みます。',
+                phases: [
+                    { t: '吸う', sec: 4, to: 1.0 },
+                    { t: '止める', sec: 2, to: 1.0 },
+                    { t: '吐く（肩を落とす）', sec: 8, to: 0.55 },
+                ]
+            },
+            {
+                id: '478', label: '4-7-8', ratio: '4-7-8', color: '#8b5cf6',
+                desc: '副交感神経を優位にする定番。入眠、強い緊張の解除、痛みの鎮静に向きます。',
+                phases: [
+                    { t: '吸う', sec: 4, to: 1.0 },
+                    { t: '止める', sec: 7, to: 1.0 },
+                    { t: '吐く', sec: 8, to: 0.55 },
+                ]
+            },
+            {
+                id: 'box', label: 'ボックス', ratio: '4-4-4-4', color: '#ef4444',
+                desc: '吸う・止める・吐く・止めるを均等に。集中力と冷静さを保ちたいときに。',
+                phases: [
+                    { t: '吸う', sec: 4, to: 1.0 },
+                    { t: '止める', sec: 4, to: 1.0 },
+                    { t: '吐く', sec: 4, to: 0.55 },
+                    { t: '止める', sec: 4, to: 0.55 },
+                ]
+            },
+            {
+                id: 'coherent', label: '整える', ratio: '5-5', color: '#14b8a6',
+                desc: '毎分6回の共振呼吸。心拍変動が整い、自律神経のバランスが取れます。長時間でも疲れません。',
+                phases: [
+                    { t: '吸う', sec: 5, to: 1.0 },
+                    { t: '吐く', sec: 5, to: 0.55 },
+                ]
+            },
+        ];
+
+        // 「おまかせ」で選ばれる呼吸パターン（グループ単位の既定）
+        const GROUP_BREATH = {
+            auto_group: 'coherent', focus_group: 'box', relax_group: 'coherent',
+            mood_group: 'coherent', mental_group: '478', health_group: 'shoulder',
+            meditation_group: 'coherent', sleep_group: '478',
+        };
+
+        // モード個別の上書き（グループ既定より優先）
+        const MODE_BREATH = {
+            shoulder_relief_flow: 'shoulder', pain_relief_flow: 'shoulder',
+            pain_relief: 'shoulder', muscle_relax: 'shoulder', headache: 'coherent',
+            sleep: '478', sleep_flow: '478', fatigue_sleep_flow: '478',
+            focus: 'box', power_focus_flow: 'box', learning: 'box',
+        };
+
+        // breathId ('off' | 'auto' | パターンID) と選択中モードから実際のパターンを決める
+        const BREATH_OPTIONS = [{ id: 'off', label: 'オフ' }, { id: 'auto', label: 'おまかせ' }]
+            .concat(BREATH_PATTERNS.map(p => ({ id: p.id, label: p.label })));
+
+        const resolveBreathPattern = (breathId, modeId) => {
+            if (breathId === 'off') return null;
+            if (breathId !== 'auto') return BREATH_PATTERNS.find(p => p.id === breathId) || null;
+            const group = MODE_GROUPS.find(g => g.modes.some(m => m.id === modeId));
+            const autoId = MODE_BREATH[modeId] || (group ? GROUP_BREATH[group.id] : null) || 'coherent';
+            return BREATH_PATTERNS.find(p => p.id === autoId) || null;
+        };
 
         // --- Audio Logic Helper ---
         class AudioManager {
@@ -1032,6 +1101,65 @@
 
         // --- Main App Component ---
 
+        // --- Breathing Guide Component ---
+        // フェーズ判定は Date.now() 基準（既存タイマーと同方式）。
+        // setInterval が遅延・停止してもズレが蓄積しない。
+        const BreathingGuide = ({ pattern, active, accentColor }) => {
+            const [now, setNow] = useState(Date.now());
+            const startRef = useRef(Date.now());
+            const patternId = pattern ? pattern.id : null;
+
+            // 再生開始・パターン変更でサイクルを先頭に戻す
+            useEffect(() => {
+                startRef.current = Date.now();
+                setNow(Date.now());
+            }, [active, patternId]);
+
+            useEffect(() => {
+                if (!active || !patternId) return;
+                const id = setInterval(() => setNow(Date.now()), 200);
+                return () => clearInterval(id);
+            }, [active, patternId]);
+
+            if (!active || !pattern) return null;
+
+            const cycleSec = pattern.phases.reduce((s, p) => s + p.sec, 0);
+            const t = ((now - startRef.current) / 1000) % cycleSec;
+            let acc = 0;
+            let phase = pattern.phases[0];
+            let remain = pattern.phases[0].sec;
+            for (let i = 0; i < pattern.phases.length; i++) {
+                const p = pattern.phases[i];
+                if (t < acc + p.sec) { phase = p; remain = acc + p.sec - t; break; }
+                acc += p.sec;
+            }
+            const color = accentColor || pattern.color;
+
+            return (
+                <div className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div className="relative shrink-0" style={{ width: '56px', height: '56px' }}>
+                        <div className="absolute inset-0 rounded-full" style={{ border: `1px dashed ${color}40` }}></div>
+                        <div className="absolute inset-0 rounded-full"
+                            style={{
+                                background: `radial-gradient(circle, ${color}cc 0%, ${color}33 70%, transparent 100%)`,
+                                transform: `scale(${phase.to})`,
+                                transition: `transform ${phase.sec}s ease-in-out`
+                            }}></div>
+                        <div className="absolute inset-0 flex items-center justify-center font-mono text-sm text-white/90">
+                            {Math.ceil(remain)}
+                        </div>
+                    </div>
+                    <div className="min-w-0">
+                        <div className="text-sm font-semibold leading-tight" style={{ color }}>{phase.t}</div>
+                        <div className="text-[10px] text-white/40 truncate mt-0.5">
+                            🫁 {pattern.label}（{pattern.ratio}）
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         function App() {
             // Logic State
             const [isPlaying, setIsPlaying] = useState(false);
@@ -1039,6 +1167,8 @@
             const [masterVol, setMasterVol] = useState(20); // Lower Deafult
             const [envVol, setEnvVol] = useState(20); // Lower Default
             const [selectedEnv, setSelectedEnv] = useState('none');
+            // 呼吸ガイド: 'off' | 'auto'（モードから自動選択） | BREATH_PATTERNS の id
+            const [breathId, setBreathId] = useState('auto');
             // File support per environment
             const [envFiles, setEnvFiles] = useState({
                 stream: null, ocean: null,
@@ -1077,6 +1207,7 @@
 
             const allowedEnvIds = ENV_OPTIONS.map(e => e.id);
             const allowedModeIds = MODES.map(m => m.id);
+            const allowedBreathIds = ['off', 'auto'].concat(BREATH_PATTERNS.map(p => p.id));
             const allowedDurations = [600, 1200, 1800, 3600, 5400];
 
             // ロード完了フラグ（初回保存の競合防止）
@@ -1107,6 +1238,10 @@
                             let env = config.selectedEnv === 'local' ? 'custom1' : config.selectedEnv;
                             env = sanitizeString(env, allowedEnvIds, 'none');
                             setSelectedEnv(env);
+                        }
+
+                        if (config.breathId) {
+                            setBreathId(sanitizeString(config.breathId, allowedBreathIds, 'auto'));
                         }
 
                         if (config.currentModeId) {
@@ -1449,6 +1584,34 @@
                     } else {
                         targetFreq = 4 + (6 * ((elapsed - p3) / (totalSec - p3)));
                     }
+                } else if (currentMode.id === 'shoulder_relief_flow') {
+                    // Shoulder / Scapula Relief Flow (60min base)
+                    // Phase 1 (0-13%):    12Hz→10Hz  緊張のスイッチを切る（SMR→アルファ）
+                    // Phase 2 (13-30%):   10Hz→7.83Hz シューマン共振で交感神経の過緊張を鎮める
+                    // Phase 3 (30-50%):   7.83Hz→5Hz  低シータで肩甲骨まわりの深部筋を弛緩
+                    // Phase 4 (50-62%):   5Hz→4Hz     エンドルフィン分泌域へ降下
+                    // Phase 5 (62-85%):   4Hz維持      鎮痛ホールド（このフローの中心。60分なら約14分間）
+                    // Phase 6 (85-100%):  4Hz→10Hz    血流の回復を促しながら覚醒へ
+                    const totalSec = duration > 0 ? duration : 3600;
+                    const p1 = totalSec * 0.13;
+                    const p2 = totalSec * 0.30;
+                    const p3 = totalSec * 0.50;
+                    const p4 = totalSec * 0.62;
+                    const p5 = totalSec * 0.85;
+
+                    if (elapsed < p1) {
+                        targetFreq = 12 - (2 * (elapsed / p1));
+                    } else if (elapsed < p2) {
+                        targetFreq = 10 - (2.17 * ((elapsed - p1) / (p2 - p1)));
+                    } else if (elapsed < p3) {
+                        targetFreq = 7.83 - (2.83 * ((elapsed - p2) / (p3 - p2)));
+                    } else if (elapsed < p4) {
+                        targetFreq = 5 - (1 * ((elapsed - p3) / (p4 - p3)));
+                    } else if (elapsed < p5) {
+                        targetFreq = 4;
+                    } else {
+                        targetFreq = 4 + (6 * ((elapsed - p5) / (totalSec - p5)));
+                    }
                 } else if (currentMode.id === 'happy_flow') {
                     // Happy Flow (60min base)
                     // Phase 1 (0-10min/17%): 10Hz→12.5Hz リラックスから幸福感へ
@@ -1671,6 +1834,7 @@
                     case 'happiness': return "12.5HzのSMR波。セロトニンやドーパミンの分泌を促し、自然な幸福感と心の安定をもたらします。気分が沈んだ時や、前向きな気持ちになりたい時に。";
                     case 'vitality': return "15Hzの低ベータ波。脳を程よく覚醒させ、明るく前向きなエネルギーを引き出します。朝の目覚めや気分のリフレッシュに最適です。";
                     case 'euphoria': return "11Hzのアルファ-SMR境界波。深いリラックスと程よい覚醒が合わさり、多幸感と喜びを感じやすい状態へ導きます。感謝の瞑想やポジティブシンキングのお供に。";
+                    case 'shoulder_relief_flow': return "肩・肩甲骨まわりの慢性的なこりと痛みに特化したフローです。まずSMR波(12Hz)で緊張のスイッチを切り、シューマン共振(7.83Hz)で交感神経の過緊張を鎮めます。低シータ波(5Hz)で肩甲骨まわりの深部筋を弛緩させ、4Hzでエンドルフィンの分泌を促して鎮痛。最後にアルファ波(10Hz)へ戻し、血流の回復を促しながら覚醒へ導きます。呼吸ガイド「肩ゆるめ(4-2-8)」との併用が効果的です。";
                     case 'pain_relief_flow': return "まずアルファ波(10Hz)で筋緊張を緩和し、次に4Hzのシータ波でエンドルフィンの分泌を促進。深い鎮痛状態をキープした後、ゆるやかにアルファ波に戻って回復を促す、痛みの緩和に特化したフローです。";
                     case 'pain_relief': return "4Hzのシータ波。脳内エンドルフィン（天然の鎮痛物質）の分泌を促進し、痛みの感覚を和らげます。慢性痛や急性痛の緩和に。";
                     case 'inflammation': return "2Hzの低デルタ波。深いリラックス状態で体の炎症反応を鎮静化し、自然治癒力を高めます。関節痛や筋肉痛の緩和に。";
@@ -1714,17 +1878,17 @@
             useEffect(() => {
                 if (!loadCompleteRef.current) return; // ロード完了前は保存しない
 
-                const config = { masterVol, envVol, duration, selectedEnv, currentModeId: currentMode.id };
+                const config = { masterVol, envVol, duration, selectedEnv, breathId, currentModeId: currentMode.id };
                 currentConfigRef.current = config; // refを最新値に更新
                 try {
                     localStorage.setItem('gamma_config', JSON.stringify(config));
                 } catch (e) { /* QuotaExceededError 等は無視 */ }
-            }, [masterVol, envVol, duration, selectedEnv, currentMode]);
+            }, [masterVol, envVol, duration, selectedEnv, breathId, currentMode]);
 
             // Export settings as JSON file for backup
             const exportSettings = () => {
                 const config = {
-                    masterVol, envVol, duration, selectedEnv, currentModeId: currentMode.id,
+                    masterVol, envVol, duration, selectedEnv, breathId, currentModeId: currentMode.id,
                     _app: 'GammaWaveBooster',
                     _version: 1,
                     _exportedAt: new Date().toISOString()
@@ -1792,6 +1956,8 @@
                             ? sanitizeNumber(config.duration, 60, 7200, 3600) : 3600;
                         const newSelectedEnv = config.selectedEnv
                             ? sanitizeString(config.selectedEnv, allowedEnvIds, 'none') : 'none';
+                        const newBreathId = config.breathId
+                            ? sanitizeString(config.breathId, allowedBreathIds, 'auto') : 'auto';
 
                         let newMode = null;
                         if (config.currentModeId) {
@@ -1804,6 +1970,7 @@
                         setEnvVol(newEnvVol);
                         setDuration(newDuration);
                         setSelectedEnv(newSelectedEnv);
+                        setBreathId(newBreathId);
                         if (newMode) setCurrentMode(newMode);
 
                         // localStorageへ即時書き込み（useEffectの遅延を待たずに確実に保存）
@@ -1812,6 +1979,7 @@
                             envVol: newEnvVol,
                             duration: newDuration,
                             selectedEnv: newSelectedEnv,
+                            breathId: newBreathId,
                             currentModeId: newMode ? newMode.id : (config.currentModeId || MODES[0].id)
                         };
                         localStorage.setItem('gamma_config', JSON.stringify(savedConfig));
@@ -1858,6 +2026,9 @@
             const [showSettings, setShowSettings] = useState(false);
             const importFileRef = useRef(null);
             const [selectedGroup, setSelectedGroup] = useState(MODE_GROUPS[0].id);
+
+            // 実際に表示する呼吸パターン（'auto' のときはモードから自動選択）
+            const breathPattern = resolveBreathPattern(breathId, currentMode.id);
 
             // Get modes for the currently selected group (plain calculation, not useMemo)
             const currentGroupModes = (() => {
@@ -1945,6 +2116,11 @@
                             </div>
                         </div>
 
+                        {/* Breathing Guide (再生中のみ) */}
+                        {isPlaying && breathPattern && (
+                            <BreathingGuide pattern={breathPattern} active={isPlaying} accentColor={currentMode.color} />
+                        )}
+
                         {/* Mode Info Panel - Always visible for selected mode */}
                         <div className="mode-info rounded-xl p-3 text-xs text-white/70 leading-relaxed">
                             <div className="flex items-start gap-2">
@@ -2025,6 +2201,34 @@
                                     );
                                 })}
                             </div>
+                        </div>
+
+                        {/* Breathing Guide Selector */}
+                        <div>
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="text-[10px] uppercase text-white/40 tracking-widest">呼吸ガイド</label>
+                                <span className="text-[9px] text-white/25">※ 再生中に表示されます</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5">
+                                {BREATH_OPTIONS.map(opt => (
+                                    <button
+                                        key={opt.id}
+                                        onClick={() => setBreathId(opt.id)}
+                                        className={`py-1.5 px-1 rounded-lg text-[10px] font-medium border transition-all duration-200 truncate ${breathId === opt.id
+                                            ? 'bg-white/10 border-white/25 text-white shadow-sm'
+                                            : 'border-white/5 text-white/35 hover:bg-white/5 hover:text-white/60'
+                                            }`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                            {breathPattern && (
+                                <p className="text-[10px] text-white/35 leading-relaxed mt-2">
+                                    {breathId === 'auto' && <span className="text-white/50">{breathPattern.label}（{breathPattern.ratio}）… </span>}
+                                    {breathPattern.desc}
+                                </p>
+                            )}
                         </div>
 
                         {/* Volume Mixers */}

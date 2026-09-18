@@ -1,23 +1,38 @@
-const CACHE_NAME = 'gamma-wave-booster-v1';
-const ASSETS_TO_CACHE = [
+// Service Worker — 脳波ブースター Pro
+// v2: プリキャッシュするCDN URLを index.html の実際の読み込みURLと一致させ、
+//     1件でも失敗するとインストール全体が失敗する問題を解消した
+const CACHE_NAME = 'gamma-wave-booster-v2';
+
+// 自サイトのファイル（欠けるとアプリが起動しないので必須扱い）
+const CORE_ASSETS = [
     './',
     './index.html',
     './manifest.json',
-    './icons/icon.svg',
+    './icons/icon.svg'
+];
+
+// 外部CDN（index.html の <script>/<link> と同じURLにすること。
+// ネットワーク事情で失敗しうるので、取得できたものだけキャッシュする）
+const CDN_ASSETS = [
     'https://cdn.tailwindcss.com',
     'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@100;400;700&display=swap',
-    'https://unpkg.com/react@18/umd/react.development.js',
-    'https://unpkg.com/react-dom@18/umd/react-dom.development.js',
-    'https://unpkg.com/@babel/standalone/babel.min.js'
+    'https://unpkg.com/react@18.2.0/umd/react.production.min.js',
+    'https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js',
+    'https://unpkg.com/@babel/standalone@7.23.10/babel.min.js'
 ];
 
 // インストール時にコアアセットをキャッシュ
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then((cache) => {
+            .then(async (cache) => {
                 console.log('[SW] Caching core assets');
-                return cache.addAll(ASSETS_TO_CACHE);
+                // 自サイトのファイルは全て必須
+                await cache.addAll(CORE_ASSETS);
+                // CDNは1件ずつ。失敗しても他を巻き込まない（オフライン初回起動の保険）
+                await Promise.all(CDN_ASSETS.map((url) =>
+                    cache.add(url).catch((e) => console.warn('[SW] skip cache:', url, e))
+                ));
             })
             .then(() => self.skipWaiting())
     );
@@ -49,7 +64,7 @@ self.addEventListener('fetch', (event) => {
                     const responseClone = response.clone();
                     caches.open(CACHE_NAME).then((cache) => {
                         cache.put(event.request, responseClone);
-                    });
+                    }).catch(() => { });
                 }
                 return response;
             })
