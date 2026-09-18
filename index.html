@@ -841,11 +841,378 @@
             </svg>
         );
 
+        const IconHistory = () => (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+            </svg>
+        );
+
         const IconStop = () => (
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M6 6h12v12H6z" />
             </svg>
         );
+
+        // --- セッション記録 ---
+        // 1件あたり200バイト程度なので localStorage で十分。
+        // 端末内にのみ保存し、どこにも送信しない。
+        const LOG_KEY = 'gamma_session_log';
+        const LOG_LIMIT = 500; // 古いものから捨てる上限
+
+        const SessionLog = {
+            load() {
+                try {
+                    const raw = localStorage.getItem(LOG_KEY);
+                    if (!raw) return [];
+                    const arr = JSON.parse(raw);
+                    if (!Array.isArray(arr)) return [];
+                    // 壊れた行が混ざっていても全体を巻き込まないよう取り除く
+                    return arr.filter(r => r && typeof r === 'object' && r.startedAt);
+                } catch (e) {
+                    console.error('記録の読み込みに失敗しました:', e);
+                    return [];
+                }
+            },
+            save(list) {
+                const trimmed = list.slice(-LOG_LIMIT);
+                try {
+                    localStorage.setItem(LOG_KEY, JSON.stringify(trimmed));
+                } catch (e) {
+                    console.error('記録の保存に失敗しました:', e);
+                }
+                return trimmed;
+            },
+            add(entry) { return SessionLog.save(SessionLog.load().concat([entry])); },
+            remove(id) { return SessionLog.save(SessionLog.load().filter(r => r.id !== id)); },
+            clear() {
+                try { localStorage.removeItem(LOG_KEY); } catch (e) { }
+                return [];
+            },
+        };
+
+        // モード別の平均改善度。痛みを前後とも記録したセッションだけを対象にする。
+        const summarizeByMode = (list) => {
+            const scored = list.filter(r =>
+                typeof r.painBefore === 'number' && typeof r.painAfter === 'number');
+            const byMode = {};
+            scored.forEach(r => {
+                if (!byMode[r.modeId]) {
+                    byMode[r.modeId] = { modeId: r.modeId, label: r.modeLabel, n: 0, before: 0, after: 0 };
+                }
+                const m = byMode[r.modeId];
+                m.n += 1;
+                m.before += r.painBefore;
+                m.after += r.painAfter;
+            });
+            return Object.keys(byMode).map(k => {
+                const m = byMode[k];
+                return {
+                    modeId: m.modeId, label: m.label, n: m.n,
+                    avgBefore: m.before / m.n,
+                    avgAfter: m.after / m.n,
+                    avgDelta: (m.before - m.after) / m.n,
+                };
+            }).sort((a, b) => b.avgDelta - a.avgDelta);
+        };
+
+        // Excelでそのまま開けるCSV（先頭のBOMが無いと日本語が文字化けする）
+        const logToCSV = (list) => {
+            const head = ['日時', 'モード', '設定時間(分)', '実際(分)', '呼吸ガイド', '環境音', '痛み(前)', '痛み(後)', '変化'];
+            const esc = (v) => {
+                const s = (v === null || v === undefined) ? '' : String(v);
+                return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+            };
+            const rows = list.map(r => {
+                const hasBoth = typeof r.painBefore === 'number' && typeof r.painAfter === 'number';
+                return [
+                    new Date(r.startedAt).toLocaleString('ja-JP'),
+                    r.modeLabel || '',
+                    Math.round((r.durationSec || 0) / 60),
+                    ((r.actualSec || 0) / 60).toFixed(1),
+                    r.breathLabel || '',
+                    r.envLabel || '',
+                    typeof r.painBefore === 'number' ? r.painBefore : '',
+                    typeof r.painAfter === 'number' ? r.painAfter : '',
+                    hasBoth ? (r.painBefore - r.painAfter) : '',
+                ];
+            });
+            return '﻿' + [head].concat(rows).map(r => r.map(esc).join(',')).join('\r\n');
+        };
+
+        const downloadFile = (text, filename, mime) => {
+            const blob = new Blob([text], { type: mime });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
+        // --- 痛み・つらさの入力（0〜10のNRS方式）---
+        const PainScale = ({ value, onChange, allowNone = false, accent = '#f43f5e' }) => {
+            const options = (allowNone ? [null] : []).concat([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+            return (
+                <div>
+                    <div className="grid grid-cols-6 gap-1">
+                        {options.map((v, i) => {
+                            const selected = value === v;
+                            return (
+                                <button
+                                    key={i}
+                                    onClick={() => onChange(v)}
+                                    aria-label={v === null ? '記録しない' : `つらさ ${v}`}
+                                    aria-pressed={selected}
+                                    className={`py-2 rounded-lg text-sm font-semibold border transition-all duration-150 ${selected
+                                        ? 'text-white'
+                                        : 'border-white/10 text-white/45 hover:bg-white/5 hover:text-white/80'}`}
+                                    style={selected ? { backgroundColor: accent, borderColor: accent } : {}}
+                                >
+                                    {v === null ? '—' : v}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <div className="flex justify-between text-[10px] text-white/30 mt-1.5">
+                        <span>0 = まったくない</span>
+                        <span>10 = 最もつらい</span>
+                    </div>
+                </div>
+            );
+        };
+
+        const MODAL_OVERLAY = {
+            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+            zIndex: 2147483647, backgroundColor: 'rgba(0,0,0,0.85)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+        };
+        const MODAL_PANEL_STYLE = { backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.2)' };
+
+        // --- セッション終了時の記録モーダル ---
+        const SessionEndModal = ({ pending, onSave, onSkip }) => {
+            const [after, setAfter] = useState(null);
+            const pendingId = pending ? pending.id : null;
+
+            // 別のセッションが終わるたびに入力をリセットする
+            useEffect(() => { setAfter(null); }, [pendingId]);
+
+            if (!pending) return null;
+
+            const hasBefore = typeof pending.painBefore === 'number';
+            const minutes = ((pending.actualSec || 0) / 60).toFixed(1);
+            const canSave = !hasBefore || after !== null;
+
+            return ReactDOM.createPortal(
+                <div style={MODAL_OVERLAY}>
+                    <div className="glass-panel w-full max-w-sm rounded-2xl p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto"
+                        style={MODAL_PANEL_STYLE}>
+                        <div>
+                            <h2 className="text-lg font-bold text-white">おつかれさまでした</h2>
+                            <p className="text-xs text-white/50 mt-1">
+                                {pending.modeLabel} ／ {minutes}分
+                            </p>
+                        </div>
+
+                        {hasBefore ? (
+                            <div className="space-y-2">
+                                <p className="text-sm text-white/80">
+                                    開始前は <span className="font-bold" style={{ color: '#f43f5e' }}>{pending.painBefore}</span> でした。いまはどうですか？
+                                </p>
+                                <PainScale value={after} onChange={setAfter} />
+                            </div>
+                        ) : (
+                            <p className="text-xs text-white/50 leading-relaxed">
+                                開始前のつらさが未記録のため、変化は残せません。
+                                次回は再生ボタンを押す前に入力しておくと、どのモードが効いたか比べられるようになります。
+                            </p>
+                        )}
+
+                        <div className="flex gap-2 pt-1">
+                            <button
+                                onClick={() => onSave(after)}
+                                disabled={!canSave}
+                                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-colors ${canSave
+                                    ? 'bg-emerald-600/80 hover:bg-emerald-500 text-white'
+                                    : 'bg-white/5 text-white/25 cursor-default'}`}
+                            >
+                                {canSave ? '記録する' : 'つらさを選んでください'}
+                            </button>
+                            <button onClick={onSkip}
+                                className="px-4 py-2.5 rounded-lg text-xs font-bold border border-white/15 text-white/50 hover:bg-white/10 hover:text-white transition-colors">
+                                記録しない
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            );
+        };
+
+        // --- 記録の一覧・集計モーダル ---
+        const HistoryModal = ({ show, onClose, log, setLog }) => {
+            if (!show) return null;
+
+            const total = log.length;
+            const totalMin = Math.round(log.reduce((s, r) => s + (r.actualSec || 0), 0) / 60);
+            const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+            const weekCount = log.filter(r => new Date(r.startedAt).getTime() >= weekAgo).length;
+            const scored = log.filter(r =>
+                typeof r.painBefore === 'number' && typeof r.painAfter === 'number');
+            const avgDelta = scored.length
+                ? scored.reduce((s, r) => s + (r.painBefore - r.painAfter), 0) / scored.length
+                : null;
+            // 1回だけの結果はたまたまの可能性が高いので、2回以上使ったモードに絞る
+            const ranking = summarizeByMode(log).filter(m => m.n >= 2);
+            const recent = log.slice().reverse().slice(0, 20);
+
+            const fmtDate = (iso) => {
+                const d = new Date(iso);
+                return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+            };
+            const deltaColor = (d) => (d > 0 ? '#34d399' : d < 0 ? '#fb7185' : 'rgba(255,255,255,0.5)');
+            const fmtDelta = (d) => (d > 0 ? `−${d.toFixed(1)}` : d < 0 ? `+${Math.abs(d).toFixed(1)}` : '±0');
+
+            return ReactDOM.createPortal(
+                <div style={MODAL_OVERLAY}>
+                    <div className="glass-panel w-full max-w-sm rounded-2xl p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto"
+                        style={MODAL_PANEL_STYLE}>
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-lg font-bold text-white">📋 セッション記録</h2>
+                            <button onClick={onClose} aria-label="記録を閉じる"
+                                className="text-white/50 hover:text-white px-2 text-xl">✕</button>
+                        </div>
+
+                        {total === 0 ? (
+                            <p className="text-xs text-white/45 leading-relaxed">
+                                まだ記録がありません。<br />
+                                再生前に「いまのつらさ」を入力してセッションを行うと、
+                                終了後に変化を記録できます。数回ぶん溜まると、どのモードが効いているか比べられます。
+                            </p>
+                        ) : (
+                            <>
+                                {/* サマリー */}
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { label: '通算', value: `${total}回` },
+                                        { label: '直近7日', value: `${weekCount}回` },
+                                        { label: '総時間', value: totalMin >= 60 ? `${(totalMin / 60).toFixed(1)}時間` : `${totalMin}分` },
+                                    ].map(s => (
+                                        <div key={s.label} className="rounded-lg py-2 px-1 text-center"
+                                            style={{ background: 'rgba(255,255,255,0.05)' }}>
+                                            <div className="text-[9px] text-white/35">{s.label}</div>
+                                            <div className="text-sm font-bold text-white mt-0.5">{s.value}</div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {avgDelta !== null && (
+                                    <p className="text-xs text-white/60 text-center">
+                                        つらさの記録 {scored.length}回 ／ 平均
+                                        <span className="font-bold mx-1" style={{ color: deltaColor(avgDelta) }}>
+                                            {fmtDelta(avgDelta)}
+                                        </span>
+                                    </p>
+                                )}
+
+                                {/* モード別ランキング */}
+                                <div>
+                                    <div className="text-[10px] uppercase text-white/40 tracking-widest mb-2">
+                                        効いているモード（2回以上）
+                                    </div>
+                                    {ranking.length === 0 ? (
+                                        <p className="text-[11px] text-white/35 leading-relaxed">
+                                            同じモードを2回以上、つらさの前後を記録すると、ここに順位が出ます。
+                                        </p>
+                                    ) : (
+                                        <div className="space-y-1.5">
+                                            {ranking.map(m => (
+                                                <div key={m.modeId}
+                                                    className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-2"
+                                                    style={{ background: 'rgba(255,255,255,0.04)' }}>
+                                                    <div className="min-w-0">
+                                                        <div className="text-xs text-white/85 truncate">{m.label}</div>
+                                                        <div className="text-[10px] text-white/35">
+                                                            {m.n}回 ／ {m.avgBefore.toFixed(1)} → {m.avgAfter.toFixed(1)}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-sm font-bold font-mono shrink-0"
+                                                        style={{ color: deltaColor(m.avgDelta) }}>
+                                                        {fmtDelta(m.avgDelta)}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* 直近の記録 */}
+                                <div>
+                                    <div className="text-[10px] uppercase text-white/40 tracking-widest mb-2">
+                                        直近の記録
+                                    </div>
+                                    <div className="space-y-1">
+                                        {recent.map(r => {
+                                            const hasBoth = typeof r.painBefore === 'number' && typeof r.painAfter === 'number';
+                                            return (
+                                                <div key={r.id} className="flex items-center gap-2 text-[11px] py-1.5 border-b border-white/5">
+                                                    <span className="text-white/35 font-mono shrink-0">{fmtDate(r.startedAt)}</span>
+                                                    <span className="text-white/75 truncate flex-1">{r.modeLabel}</span>
+                                                    <span className="text-white/35 font-mono shrink-0">
+                                                        {Math.round((r.actualSec || 0) / 60)}分
+                                                    </span>
+                                                    <span className="font-mono shrink-0 w-14 text-right"
+                                                        style={{ color: hasBoth ? deltaColor(r.painBefore - r.painAfter) : 'rgba(255,255,255,0.2)' }}>
+                                                        {hasBoth ? `${r.painBefore}→${r.painAfter}` : '—'}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => setLog(SessionLog.remove(r.id))}
+                                                        aria-label="この記録を削除"
+                                                        className="text-white/20 hover:text-rose-400 px-1 shrink-0">✕</button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    {total > recent.length && (
+                                        <p className="text-[10px] text-white/25 mt-2">
+                                            ほか{total - recent.length}件（CSVに全件書き出せます）
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* 書き出し・消去 */}
+                                <div className="flex gap-2 pt-1">
+                                    <button
+                                        onClick={() => downloadFile(
+                                            logToCSV(log),
+                                            `gamma_booster_log_${new Date().toISOString().slice(0, 10)}.csv`,
+                                            'text/csv;charset=utf-8')}
+                                        className="flex-1 py-2.5 bg-emerald-600/80 hover:bg-emerald-500 rounded-lg text-xs font-bold text-white transition-colors">
+                                        📤 CSVで書き出す
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (window.confirm('すべての記録を消します。元に戻せません。よろしいですか？')) {
+                                                setLog(SessionLog.clear());
+                                            }
+                                        }}
+                                        className="px-4 py-2.5 rounded-lg text-xs font-bold border border-white/15 text-white/45 hover:bg-rose-500/20 hover:text-rose-300 transition-colors">
+                                        全消去
+                                    </button>
+                                </div>
+                            </>
+                        )}
+
+                        <p className="text-[10px] text-white/25 leading-relaxed">
+                            記録はこの端末の中だけに保存されます。機種変更の前にCSVで書き出してください。
+                        </p>
+                    </div>
+                </div>,
+                document.body
+            );
+        };
 
         // --- IndexedDB: 環境音ファイルの永続化 ---
         // localStorageはファイル（Blobバイナリ）を保存できないため、IndexedDBを使用する
@@ -1154,6 +1521,12 @@
             const [elapsed, setElapsed] = useState(0); // seconds
             // 一時停止中（経過時間を保持したまま音だけ止めている状態）
             const [isPaused, setIsPaused] = useState(false);
+            // セッション記録
+            const [sessionLog, setSessionLog] = useState([]);
+            const [showHistory, setShowHistory] = useState(false);
+            const [painBefore, setPainBefore] = useState(null); // 未入力は null
+            const [pendingLog, setPendingLog] = useState(null); // 終了モーダルに渡す途中の記録
+            const sessionMetaRef = useRef(null);                // 開始時のモード・設定を保持
             const elapsedRef = useRef(0);             // 常に最新のelapsedを保持するref
             const [duration, setDuration] = useState(3600); // seconds (default 60m)
             const timerRef = useRef(null);
@@ -1241,6 +1614,9 @@
                     }
                 });
 
+                // ─── セッション記録の読み込み ───
+                setSessionLog(SessionLog.load());
+
                 // ─── IndexedDBから環境音ファイルを次の起動時に自動復元 ───
                 const ENV_KEYS = ['stream', 'ocean', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5'];
                 AudioFileDB.loadAll(ENV_KEYS).then(savedFiles => {
@@ -1307,6 +1683,21 @@
             };
 
             const startSession = (resumeFrom = 0) => {
+                // 新規開始のときだけ記録用の情報を確保する（再開時は最初の情報を引き継ぐ）
+                if (resumeFrom === 0) {
+                    const envOpt = ENV_OPTIONS.find(o => o.id === selectedEnv);
+                    sessionMetaRef.current = {
+                        startedAt: new Date().toISOString(),
+                        modeId: currentMode.id,
+                        modeLabel: currentMode.label,
+                        durationSec: duration,
+                        breathId: breathId,
+                        breathLabel: breathPattern ? breathPattern.label : 'オフ',
+                        envId: selectedEnv,
+                        envLabel: envOpt ? envOpt.label : '',
+                        painBefore: painBefore,
+                    };
+                }
                 isPlayingRef.current = true; // ref同期（バックグラウンド用）
                 window.__gammaIsPlaying = true; // グローバルフラグ（visibilitychange用）
                 updateFrequency(resumeFrom); // Start oscillators
@@ -1374,6 +1765,9 @@
             // セッションの終了処理。
             // pause=true なら経過時間を保持し、次回の再生で続きから再開する。
             const endSession = ({ pause = false, fadeSeconds = 3 } = {}) => {
+                // elapsed をリセットする前に実績を控えておく
+                const meta = sessionMetaRef.current;
+                const actualSec = elapsedRef.current;
                 isPlayingRef.current = false; // ref同期
                 window.__gammaIsPlaying = false; // グローバルフラグ
                 sessionStartRef.current = null; // タイマー無効化
@@ -1400,6 +1794,33 @@
                 if ('mediaSession' in navigator) {
                     navigator.mediaSession.metadata = null;
                 }
+
+                // 完全停止のときだけ記録する。1分未満は操作ミス扱いで残さない。
+                if (!pause) {
+                    if (meta && actualSec >= 60) {
+                        setPendingLog(Object.assign({}, meta, {
+                            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                            actualSec: actualSec,
+                        }));
+                    }
+                    sessionMetaRef.current = null;
+                }
+            };
+
+            // 終了モーダルから「記録する」を押したとき
+            const saveSessionLog = (painAfter) => {
+                if (!pendingLog) return;
+                const entry = Object.assign({}, pendingLog);
+                if (typeof painAfter === 'number') entry.painAfter = painAfter;
+                setSessionLog(SessionLog.add(entry));
+                setPendingLog(null);
+                setPainBefore(null); // 次のセッションのために入力を空に戻す
+                showToast('📋 記録しました');
+            };
+
+            const skipSessionLog = () => {
+                setPendingLog(null);
+                setPainBefore(null);
             };
 
             // 完全停止（経過時間をリセット）。タイマー満了時とストップボタンから呼ばれる。
@@ -2058,11 +2479,18 @@
                                 </h1>
                                 <p className="text-[10px] text-white/30 tracking-wider">Gamma Wave Booster Pro</p>
                             </div>
-                            <button onClick={() => setShowSettings(!showSettings)}
-                                aria-label="設定を開く" title="設定"
-                                className="p-2 rounded-full hover:bg-white/10 transition-colors">
-                                <IconSettings />
-                            </button>
+                            <div className="flex items-center gap-1">
+                                <button onClick={() => setShowHistory(true)}
+                                    aria-label="セッション記録を開く" title="記録"
+                                    className="p-2 rounded-full hover:bg-white/10 transition-colors text-white/70">
+                                    <IconHistory />
+                                </button>
+                                <button onClick={() => setShowSettings(!showSettings)}
+                                    aria-label="設定を開く" title="設定"
+                                    className="p-2 rounded-full hover:bg-white/10 transition-colors">
+                                    <IconSettings />
+                                </button>
+                            </div>
                         </header>
 
                         {/* Timer Display */}
@@ -2260,6 +2688,20 @@
                             </div>
                         </div>
 
+                        {/* 開始前のつらさ入力（記録用・任意） */}
+                        {!isPlaying && !isPaused && (
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-[10px] uppercase text-white/40 tracking-widest">いまのつらさ</label>
+                                    <span className="text-[9px] text-white/25">※ 任意・記録用</span>
+                                </div>
+                                <PainScale value={painBefore} onChange={setPainBefore} allowNone={true} />
+                                <p className="text-[10px] text-white/30 leading-relaxed mt-2">
+                                    入力してから始めると、終了後に変化を記録できます（「—」は記録しない）。
+                                </p>
+                            </div>
+                        )}
+
                         {/* Main Action Button */}
                         <div className="flex justify-center items-center gap-4 pt-1 pb-2">
                             <div className="relative">
@@ -2324,6 +2766,19 @@
                     />
 
 
+
+                    {/* セッション記録 */}
+                    <SessionEndModal
+                        pending={pendingLog}
+                        onSave={saveSessionLog}
+                        onSkip={skipSessionLog}
+                    />
+                    <HistoryModal
+                        show={showHistory}
+                        onClose={() => setShowHistory(false)}
+                        log={sessionLog}
+                        setLog={setSessionLog}
+                    />
 
                     {/* Debug Console (Hidden by default, toggle with 'D') */}
                     <DebugConsole />
