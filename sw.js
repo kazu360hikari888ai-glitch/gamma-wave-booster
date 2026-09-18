@@ -8,7 +8,10 @@ const CORE_ASSETS = [
     './',
     './index.html',
     './manifest.json',
-    './icons/icon.svg'
+    './icons/icon.svg',
+    './icons/icon-192.png',
+    './icons/icon-512.png',
+    './icons/icon-maskable-512.png'
 ];
 
 // 外部CDN（index.html の <script>/<link> と同じURLにすること。
