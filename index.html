@@ -221,10 +221,26 @@
             background: rgba(255, 255, 255, 0.25);
         }
 
+        /* ── 文字サイズ ──
+           ルートのfont-sizeを変えることで、rem基準のTailwindユーティリティ
+           （文字サイズ・行間・余白）がまとめて比例拡大される。
+           行間だけ取り残されて文字が重なる、といった崩れが起きない。 */
+        :root {
+            --fs-scale: 1;
+        }
+
+        html {
+            font-size: calc(16px * var(--fs-scale));
+        }
+
+        /* 9〜11pxだった小さすぎる文字の置き換え先（remなので上のスケールに追従する） */
+        .t-xxs { font-size: 0.6875rem; }  /* 11px 相当 */
+        .t-xs  { font-size: 0.75rem; }    /* 12px 相当 */
+
         /* Badge styles for flow modes */
         .badge-flow {
             display: inline-block;
-            font-size: 9px;
+            font-size: 0.625rem;
             padding: 1px 6px;
             border-radius: 9999px;
             background: rgba(255, 255, 255, 0.1);
@@ -284,7 +300,7 @@
             flex-shrink: 0;
             padding: 6px 12px;
             border-radius: 10px;
-            font-size: 11px;
+            font-size: 0.75rem;
             font-weight: 600;
             border: 1px solid rgba(255, 255, 255, 0.08);
             background: rgba(255, 255, 255, 0.03);
@@ -706,6 +722,30 @@
                 }
             }
 
+            // セッション終了を知らせるやわらかい2音のチャイム。
+            // masterGain を通さず destination へ直結するため、
+            // 同時に走るフェードアウトで消されない。
+            playEndChime(volume = 0.2) {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                [[880, 0], [1174.66, 0.45]].forEach(pair => {
+                    const freq = pair[0], offset = pair[1];
+                    try {
+                        const o = this.ctx.createOscillator();
+                        const g = this.ctx.createGain();
+                        o.type = 'sine';
+                        o.frequency.setValueAtTime(freq, now + offset);
+                        // exponentialRamp は 0 を扱えないので極小値から始める
+                        g.gain.setValueAtTime(0.0001, now + offset);
+                        g.gain.exponentialRampToValueAtTime(volume, now + offset + 0.04);
+                        g.gain.exponentialRampToValueAtTime(0.0001, now + offset + 1.2);
+                        o.connect(g).connect(this.ctx.destination);
+                        o.start(now + offset);
+                        o.stop(now + offset + 1.25);
+                    } catch (e) { console.error('終了音の再生に失敗しました:', e); }
+                });
+            }
+
             // 破棄予約と環境音フェードのタイマーを取り消す
             cancelPendingFade() {
                 if (this._fadeTimer) { clearTimeout(this._fadeTimer); this._fadeTimer = null; }
@@ -854,6 +894,21 @@
             </svg>
         );
 
+        // --- お気に入り ---
+        const FAV_GROUP_ID = 'fav_group';
+        const FAV_GROUP = { id: FAV_GROUP_ID, label: '⭐ お気に入り', color: '#facc15' };
+
+        // --- 終了時の通知 ---
+        // 眠りに入るためのモードは、終了時に音を鳴らすと目が覚めてしまうので必ず無音にする
+        const SILENT_END_MODES = ['sleep', 'sleep_flow', 'fatigue_sleep_flow'];
+
+        // --- 文字サイズ ---
+        const FONT_SCALES = [
+            { id: 'normal', label: '標準', scale: 1 },
+            { id: 'large', label: '大', scale: 1.15 },
+            { id: 'xlarge', label: '特大', scale: 1.3 },
+        ];
+
         // --- セッション記録 ---
         // 1件あたり200バイト程度なので localStorage で十分。
         // 端末内にのみ保存し、どこにも送信しない。
@@ -976,7 +1031,7 @@
                             );
                         })}
                     </div>
-                    <div className="flex justify-between text-[10px] text-white/30 mt-1.5">
+                    <div className="flex justify-between t-xs text-white/30 mt-1.5">
                         <span>0 = まったくない</span>
                         <span>10 = 最もつらい</span>
                     </div>
@@ -1102,7 +1157,7 @@
                                     ].map(s => (
                                         <div key={s.label} className="rounded-lg py-2 px-1 text-center"
                                             style={{ background: 'rgba(255,255,255,0.05)' }}>
-                                            <div className="text-[9px] text-white/35">{s.label}</div>
+                                            <div className="t-xxs text-white/35">{s.label}</div>
                                             <div className="text-sm font-bold text-white mt-0.5">{s.value}</div>
                                         </div>
                                     ))}
@@ -1119,11 +1174,11 @@
 
                                 {/* モード別ランキング */}
                                 <div>
-                                    <div className="text-[10px] uppercase text-white/40 tracking-widest mb-2">
+                                    <div className="t-xs uppercase text-white/40 tracking-widest mb-2">
                                         効いているモード（2回以上）
                                     </div>
                                     {ranking.length === 0 ? (
-                                        <p className="text-[11px] text-white/35 leading-relaxed">
+                                        <p className="t-xs text-white/35 leading-relaxed">
                                             同じモードを2回以上、つらさの前後を記録すると、ここに順位が出ます。
                                         </p>
                                     ) : (
@@ -1134,7 +1189,7 @@
                                                     style={{ background: 'rgba(255,255,255,0.04)' }}>
                                                     <div className="min-w-0">
                                                         <div className="text-xs text-white/85 truncate">{m.label}</div>
-                                                        <div className="text-[10px] text-white/35">
+                                                        <div className="t-xs text-white/35">
                                                             {m.n}回 ／ {m.avgBefore.toFixed(1)} → {m.avgAfter.toFixed(1)}
                                                         </div>
                                                     </div>
@@ -1150,14 +1205,14 @@
 
                                 {/* 直近の記録 */}
                                 <div>
-                                    <div className="text-[10px] uppercase text-white/40 tracking-widest mb-2">
+                                    <div className="t-xs uppercase text-white/40 tracking-widest mb-2">
                                         直近の記録
                                     </div>
                                     <div className="space-y-1">
                                         {recent.map(r => {
                                             const hasBoth = typeof r.painBefore === 'number' && typeof r.painAfter === 'number';
                                             return (
-                                                <div key={r.id} className="flex items-center gap-2 text-[11px] py-1.5 border-b border-white/5">
+                                                <div key={r.id} className="flex items-center gap-2 t-xs py-1.5 border-b border-white/5">
                                                     <span className="text-white/35 font-mono shrink-0">{fmtDate(r.startedAt)}</span>
                                                     <span className="text-white/75 truncate flex-1">{r.modeLabel}</span>
                                                     <span className="text-white/35 font-mono shrink-0">
@@ -1176,7 +1231,7 @@
                                         })}
                                     </div>
                                     {total > recent.length && (
-                                        <p className="text-[10px] text-white/25 mt-2">
+                                        <p className="t-xs text-white/25 mt-2">
                                             ほか{total - recent.length}件（CSVに全件書き出せます）
                                         </p>
                                     )}
@@ -1205,7 +1260,7 @@
                             </>
                         )}
 
-                        <p className="text-[10px] text-white/25 leading-relaxed">
+                        <p className="t-xs text-white/25 leading-relaxed">
                             記録はこの端末の中だけに保存されます。機種変更の前にCSVで書き出してください。
                         </p>
                     </div>
@@ -1282,7 +1337,8 @@
         })();
 
         // --- Settings Modal Component (Portal) ---
-        const SettingsModal = ({ show, onClose, envFiles, setEnvFiles, onExport, onImport, customFolderFiles, setCustomFolderFiles }) => {
+        const SettingsModal = ({ show, onClose, envFiles, setEnvFiles, onExport, onImport, customFolderFiles, setCustomFolderFiles,
+            fontScaleId, setFontScaleId, endNotify, setEndNotify }) => {
             if (!show) return null;
 
             const handleFileSelect = (envId, file) => {
@@ -1335,7 +1391,7 @@
                                     onChange={(e) => e.target.files && handleFileSelect(envId, e.target.files[0])}
                                     className="hidden" id={`file-single-${envId}`} />
                                 <label htmlFor={`file-single-${envId}`}
-                                    className="block w-full text-center py-2 px-2 bg-white/10 hover:bg-white/20 border border-dashed border-white/30 rounded cursor-pointer text-[10px] text-white transition-colors">
+                                    className="block w-full text-center py-2 px-2 bg-white/10 hover:bg-white/20 border border-dashed border-white/30 rounded cursor-pointer t-xs text-white transition-colors">
                                     📄 ファイル
                                 </label>
                             </div>
@@ -1347,14 +1403,14 @@
                                     multiple
                                     ref={(el) => { if (el) { el.setAttribute('webkitdirectory', ''); el.setAttribute('directory', ''); } }} />
                                 <label htmlFor={`folder-upload-${envId}`}
-                                    className="block w-full text-center py-2 px-2 bg-white/10 hover:bg-white/20 border border-dashed border-amber-400/40 rounded cursor-pointer text-[10px] text-white transition-colors">
+                                    className="block w-full text-center py-2 px-2 bg-white/10 hover:bg-white/20 border border-dashed border-amber-400/40 rounded cursor-pointer t-xs text-white transition-colors">
                                     📁 フォルダ
                                 </label>
                             </div>
                         </div>
                         {/* Current selection */}
                         {envFiles[envId] && (
-                            <div className="text-[10px] text-emerald-400 truncate">▶ {envFiles[envId].name}</div>
+                            <div className="t-xs text-emerald-400 truncate">▶ {envFiles[envId].name}</div>
                         )}
                         {/* Folder file list */}
                         {folderFiles.length > 1 && (
@@ -1362,7 +1418,7 @@
                                 {folderFiles.map((f, i) => (
                                     <button key={i}
                                         onClick={() => handleFolderFileSelect(envId, f)}
-                                        className={`w-full text-left text-[10px] px-2 py-1 rounded transition-colors truncate ${envFiles[envId] && envFiles[envId].name === f.name
+                                        className={`w-full text-left t-xs px-2 py-1 rounded transition-colors truncate ${envFiles[envId] && envFiles[envId].name === f.name
                                             ? 'bg-emerald-600/40 text-emerald-300'
                                             : 'text-white/50 hover:bg-white/10 hover:text-white'
                                             }`}>
@@ -1390,9 +1446,58 @@
 
 
 
+                        {/* 表示と通知 */}
+                        <div className="space-y-4">
+                            <div>
+                                <label className="t-xs uppercase text-white/40 tracking-widest mb-2 block">文字の大きさ</label>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                    {FONT_SCALES.map(f => (
+                                        <button
+                                            key={f.id}
+                                            onClick={() => setFontScaleId(f.id)}
+                                            aria-pressed={fontScaleId === f.id}
+                                            className={`py-2.5 rounded-lg text-xs font-medium border transition-all duration-200 ${fontScaleId === f.id
+                                                ? 'bg-white/10 border-white/25 text-white shadow-sm'
+                                                : 'border-white/5 text-white/35 hover:bg-white/5 hover:text-white/60'
+                                                }`}
+                                        >
+                                            {f.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="t-xs text-white/30 leading-relaxed mt-2">
+                                    画面全体の文字が拡大されます。ブラウザのピンチ操作でも拡大できます。
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="t-xs uppercase text-white/40 tracking-widest mb-2 block">終了時の通知</label>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                    {[{ v: true, l: '🔔 知らせる' }, { v: false, l: '🔕 知らせない' }].map(opt => (
+                                        <button
+                                            key={String(opt.v)}
+                                            onClick={() => setEndNotify(opt.v)}
+                                            aria-pressed={endNotify === opt.v}
+                                            className={`py-2.5 rounded-lg text-xs font-medium border transition-all duration-200 ${endNotify === opt.v
+                                                ? 'bg-white/10 border-white/25 text-white shadow-sm'
+                                                : 'border-white/5 text-white/35 hover:bg-white/5 hover:text-white/60'
+                                                }`}
+                                        >
+                                            {opt.l}
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="t-xs text-white/30 leading-relaxed mt-2">
+                                    セッションが終わったときに、やわらかいチャイムとバイブでお知らせします。
+                                    睡眠系のモード（熟睡導入・安眠・不安解消・疲労解消）は、眠りを妨げないよう
+                                    この設定にかかわらず必ず無音になります。
+                                </p>
+                            </div>
+                        </div>
+
                         {/* Custom Sound Slots */}
                         <div className="space-y-3">
-                            <div className="text-[10px] uppercase text-white/40 tracking-widest">環境音設定（ファイル / フォルダ）</div>
+                            <div className="t-xs uppercase text-white/40 tracking-widest">環境音設定（ファイル / フォルダ）</div>
                             {renderCustomSetting('stream', 'せせらぎ', 0)}
                             {renderCustomSetting('ocean', '南国の海', 0)}
                             {[1, 2, 3, 4, 5].map(n => renderCustomSetting(`custom${n}`, `お好み ${n}`, n))}
@@ -1401,7 +1506,7 @@
                         {/* Backup / Restore Section */}
                         <div className="p-3 bg-white/5 rounded-lg border border-white/10 space-y-3">
                             <label className="text-sm font-bold text-white block">💾 設定のバックアップ / 復元</label>
-                            <p className="text-[10px] text-white/40 leading-relaxed">
+                            <p className="t-xs text-white/40 leading-relaxed">
                                 設定をJSONファイルとしてスマホに保存できます。機種変更や別の端末への移行時にお使いください。
                             </p>
                             <div className="flex gap-2">
@@ -1489,7 +1594,7 @@
                     </div>
                     <div className="min-w-0">
                         <div className="text-sm font-semibold leading-tight" style={{ color }}>{phase.t}</div>
-                        <div className="text-[10px] text-white/40 truncate mt-0.5">
+                        <div className="t-xs text-white/40 truncate mt-0.5">
                             🫁 {pattern.label}（{pattern.ratio}）
                         </div>
                     </div>
@@ -1524,6 +1629,9 @@
             // セッション記録
             const [sessionLog, setSessionLog] = useState([]);
             const [showHistory, setShowHistory] = useState(false);
+            const [favorites, setFavorites] = useState([]);       // お気に入りモードのID
+            const [fontScaleId, setFontScaleId] = useState('normal');
+            const [endNotify, setEndNotify] = useState(true);     // 終了時に知らせるか
             const [painBefore, setPainBefore] = useState(null); // 未入力は null
             const [pendingLog, setPendingLog] = useState(null); // 終了モーダルに渡す途中の記録
             const sessionMetaRef = useRef(null);                // 開始時のモード・設定を保持
@@ -1588,6 +1696,17 @@
 
                         if (config.breathId) {
                             setBreathId(sanitizeString(config.breathId, allowedBreathIds, 'auto'));
+                        }
+
+                        if (Array.isArray(config.favorites)) {
+                            // 存在しないモードIDが紛れ込んでいても無視する
+                            setFavorites(config.favorites.filter(id => allowedModeIds.indexOf(id) !== -1));
+                        }
+                        if (config.fontScaleId) {
+                            setFontScaleId(sanitizeString(config.fontScaleId, FONT_SCALES.map(f => f.id), 'normal'));
+                        }
+                        if (typeof config.endNotify === 'boolean') {
+                            setEndNotify(config.endNotify);
                         }
 
                         if (config.currentModeId) {
@@ -1774,8 +1893,6 @@
                 setIsPlaying(false);
                 setIsPaused(pause);
                 if (!pause) { setElapsed(0); elapsedRef.current = 0; }
-                // いきなり切らずにフェードアウトしてから破棄する
-                audioMgr.current.fadeOutAndCleanup(fadeSeconds);
                 if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
 
                 // keepAlive停止
@@ -1795,6 +1912,17 @@
                     navigator.mediaSession.metadata = null;
                 }
 
+                // チャイムは AudioContext が生きているうちに予約する必要があるため、
+                // フェードアウト（一定時間後に破棄する）より先に鳴らす。
+                // 完全停止のときだけ知らせる。眠るためのモードでは必ず無音にする。
+                if (!pause && endNotify && meta && actualSec >= 60
+                    && SILENT_END_MODES.indexOf(meta.modeId) === -1) {
+                    audioMgr.current.playEndChime();
+                    if ('vibrate' in navigator) {
+                        try { navigator.vibrate([180, 90, 180]); } catch (e) { }
+                    }
+                }
+
                 // 完全停止のときだけ記録する。1分未満は操作ミス扱いで残さない。
                 if (!pause) {
                     if (meta && actualSec >= 60) {
@@ -1805,6 +1933,9 @@
                     }
                     sessionMetaRef.current = null;
                 }
+
+                // いきなり切らずにフェードアウトしてから破棄する（チャイムの予約より後）
+                audioMgr.current.fadeOutAndCleanup(fadeSeconds);
             };
 
             // 終了モーダルから「記録する」を押したとき
@@ -1827,6 +1958,12 @@
             const stopSession = () => endSession({ pause: false, fadeSeconds: 3 });
             // 一時停止（経過時間を保持）。フェードは短めにして操作感を保つ。
             const pauseSession = () => endSession({ pause: true, fadeSeconds: 1.5 });
+
+            // 文字サイズの設定をCSS変数へ反映する
+            useEffect(() => {
+                const entry = FONT_SCALES.find(f => f.id === fontScaleId) || FONT_SCALES[0];
+                document.documentElement.style.setProperty('--fs-scale', String(entry.scale));
+            }, [fontScaleId]);
 
             // durationRef / elapsedRef を常に最新値に同期
             // （updateFrequencyの引数省略時にこのrefを使うため、周波数更新のuseEffectより先に置くこと）
@@ -2288,17 +2425,23 @@
             useEffect(() => {
                 if (!loadCompleteRef.current) return; // ロード完了前は保存しない
 
-                const config = { masterVol, envVol, duration, selectedEnv, breathId, currentModeId: currentMode.id };
+                const config = {
+                    masterVol, envVol, duration, selectedEnv, breathId,
+                    favorites, fontScaleId, endNotify,
+                    currentModeId: currentMode.id
+                };
                 currentConfigRef.current = config; // refを最新値に更新
                 try {
                     localStorage.setItem('gamma_config', JSON.stringify(config));
                 } catch (e) { /* QuotaExceededError 等は無視 */ }
-            }, [masterVol, envVol, duration, selectedEnv, breathId, currentMode]);
+            }, [masterVol, envVol, duration, selectedEnv, breathId, favorites, fontScaleId, endNotify, currentMode]);
 
             // Export settings as JSON file for backup
             const exportSettings = () => {
                 const config = {
-                    masterVol, envVol, duration, selectedEnv, breathId, currentModeId: currentMode.id,
+                    masterVol, envVol, duration, selectedEnv, breathId,
+                    favorites, fontScaleId, endNotify,
+                    currentModeId: currentMode.id,
                     _app: 'GammaWaveBooster',
                     _version: 1,
                     _exportedAt: new Date().toISOString()
@@ -2368,6 +2511,11 @@
                             ? sanitizeString(config.selectedEnv, allowedEnvIds, 'none') : 'none';
                         const newBreathId = config.breathId
                             ? sanitizeString(config.breathId, allowedBreathIds, 'auto') : 'auto';
+                        const newFavorites = Array.isArray(config.favorites)
+                            ? config.favorites.filter(id => allowedModeIds.indexOf(id) !== -1) : [];
+                        const newFontScaleId = config.fontScaleId
+                            ? sanitizeString(config.fontScaleId, FONT_SCALES.map(f => f.id), 'normal') : 'normal';
+                        const newEndNotify = typeof config.endNotify === 'boolean' ? config.endNotify : true;
 
                         let newMode = null;
                         if (config.currentModeId) {
@@ -2381,6 +2529,9 @@
                         setDuration(newDuration);
                         setSelectedEnv(newSelectedEnv);
                         setBreathId(newBreathId);
+                        setFavorites(newFavorites);
+                        setFontScaleId(newFontScaleId);
+                        setEndNotify(newEndNotify);
                         if (newMode) setCurrentMode(newMode);
 
                         // localStorageへ即時書き込み（useEffectの遅延を待たずに確実に保存）
@@ -2390,6 +2541,9 @@
                             duration: newDuration,
                             selectedEnv: newSelectedEnv,
                             breathId: newBreathId,
+                            favorites: newFavorites,
+                            fontScaleId: newFontScaleId,
+                            endNotify: newEndNotify,
                             currentModeId: newMode ? newMode.id : (config.currentModeId || MODES[0].id)
                         };
                         localStorage.setItem('gamma_config', JSON.stringify(savedConfig));
@@ -2442,14 +2596,30 @@
 
             // Get modes for the currently selected group (plain calculation, not useMemo)
             const currentGroupModes = (() => {
+                if (selectedGroup === FAV_GROUP_ID) {
+                    return MODES.filter(m => favorites.indexOf(m.id) !== -1);
+                }
                 const group = MODE_GROUPS.find(g => g.id === selectedGroup);
                 return group ? group.modes : MODE_GROUPS[0].modes;
             })();
 
+            const toggleFavorite = (modeId) => {
+                setFavorites(prev => prev.indexOf(modeId) !== -1
+                    ? prev.filter(id => id !== modeId)
+                    : prev.concat([modeId]));
+            };
+
+            // 下のuseEffectはモード変更時だけ動かしたいので、選択中タブはrefで参照する
+            // （依存配列にselectedGroupを入れると、タブを手で切り替えた瞬間に引き戻されてしまう）
+            const selectedGroupRef = useRef(selectedGroup);
+            useEffect(() => { selectedGroupRef.current = selectedGroup; }, [selectedGroup]);
+
             // Auto-sync group tab when mode changes (e.g. from config restore)
             useEffect(() => {
+                // お気に入りタブを開いている間は勝手に別タブへ移さない
+                if (selectedGroupRef.current === FAV_GROUP_ID) return;
                 const ownerGroup = MODE_GROUPS.find(g => g.modes.some(m => m.id === currentMode.id));
-                if (ownerGroup && ownerGroup.id !== selectedGroup) {
+                if (ownerGroup && ownerGroup.id !== selectedGroupRef.current) {
                     setSelectedGroup(ownerGroup.id);
                 }
             }, [currentMode.id]);
@@ -2477,7 +2647,7 @@
                                 <h1 className="text-lg font-bold tracking-tight text-white/90">
                                     🧠 脳波ブースター
                                 </h1>
-                                <p className="text-[10px] text-white/30 tracking-wider">Gamma Wave Booster Pro</p>
+                                <p className="t-xs text-white/30 tracking-wider">Gamma Wave Booster Pro</p>
                             </div>
                             <div className="flex items-center gap-1">
                                 <button onClick={() => setShowHistory(true)}
@@ -2507,7 +2677,7 @@
                             {/* Duration Selectors（再生中・一時停止中は変更させない） */}
                             {!isPlaying && !isPaused && (
                                 <div className="flex flex-col items-center mt-4 w-full">
-                                    <span className="text-[10px] uppercase text-white/40 tracking-widest mb-2">時間設定</span>
+                                    <span className="t-xs uppercase text-white/40 tracking-widest mb-2">時間設定</span>
                                     <div className="flex gap-2">
                                         {[10, 20, 30, 60, 90].map(m => (
                                             <button
@@ -2552,9 +2722,9 @@
 
                         {/* Group Selector */}
                         <div>
-                            <label className="text-[10px] uppercase text-white/40 tracking-widest mb-2 block">カテゴリ</label>
+                            <label className="t-xs uppercase text-white/40 tracking-widest mb-2 block">カテゴリ</label>
                             <div className="group-tabs">
-                                {MODE_GROUPS.map(group => (
+                                {[FAV_GROUP].concat(MODE_GROUPS).map(group => (
                                     <button
                                         key={group.id}
                                         onClick={() => setSelectedGroup(group.id)}
@@ -2570,33 +2740,58 @@
 
                         {/* Mode Selector (filtered by group) */}
                         <div>
-                            <label className="text-[10px] uppercase text-white/40 tracking-widest mb-2 block">モード選択</label>
-                            <div className="grid grid-cols-1 gap-1.5 max-h-40 overflow-y-auto pr-1">
-                                {currentGroupModes.map(mode => (
-                                    <button
-                                        key={mode.id}
-                                        onClick={() => setCurrentMode(mode)}
-                                        className={`p-2.5 rounded-xl text-left transition-all duration-200 border ${currentMode.id === mode.id
-                                            ? 'bg-white/10 border-white/30 shadow-lg shadow-black/20'
-                                            : 'border-transparent hover:bg-white/5 text-white/60 hover:border-white/10'
-                                            }`}
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: mode.color }}></span>
-                                            <span className="text-xs font-semibold" style={{ color: currentMode.id === mode.id ? mode.color : undefined }}>{mode.label}</span>
-                                            {mode.flow && <span className="badge-flow">フロー</span>}
+                            <label className="t-xs uppercase text-white/40 tracking-widest mb-2 block">モード選択</label>
+                            <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-1">
+                                {selectedGroup === FAV_GROUP_ID && currentGroupModes.length === 0 && (
+                                    <p className="t-xs text-white/35 leading-relaxed py-2 px-1">
+                                        まだお気に入りがありません。各モードの右にある ☆ を押すと、ここに集まります。
+                                    </p>
+                                )}
+                                {currentGroupModes.map(mode => {
+                                    const isCurrent = currentMode.id === mode.id;
+                                    const isFav = favorites.indexOf(mode.id) !== -1;
+                                    return (
+                                        <div
+                                            key={mode.id}
+                                            className={`flex items-stretch rounded-xl transition-all duration-200 border ${isCurrent
+                                                ? 'bg-white/10 border-white/30 shadow-lg shadow-black/20'
+                                                : 'border-transparent hover:bg-white/5 hover:border-white/10'
+                                                }`}
+                                        >
+                                            <button
+                                                onClick={() => setCurrentMode(mode)}
+                                                aria-pressed={isCurrent}
+                                                className="flex-1 min-w-0 p-2.5 text-left"
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: mode.color }}></span>
+                                                    <span className="text-xs font-semibold"
+                                                        style={{ color: isCurrent ? mode.color : 'rgba(255,255,255,0.6)' }}>{mode.label}</span>
+                                                    {mode.flow && <span className="badge-flow">フロー</span>}
+                                                </div>
+                                                <div className="t-xs text-white/35 mt-0.5 pl-3.5">{mode.desc}</div>
+                                            </button>
+                                            <button
+                                                onClick={() => toggleFavorite(mode.id)}
+                                                aria-label={`${mode.label}を${isFav ? 'お気に入りから外す' : 'お気に入りに追加'}`}
+                                                aria-pressed={isFav}
+                                                title={isFav ? 'お気に入りから外す' : 'お気に入りに追加'}
+                                                className="px-3 shrink-0 text-lg leading-none flex items-center transition-colors hover:brightness-125"
+                                                style={{ color: isFav ? '#facc15' : 'rgba(255,255,255,0.22)' }}
+                                            >
+                                                {isFav ? '★' : '☆'}
+                                            </button>
                                         </div>
-                                        <div className="text-[10px] text-white/35 mt-0.5 pl-3.5">{mode.desc}</div>
-                                    </button>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
 
                         {/* Environmental Sound Selector */}
                         <div className="flex flex-col gap-2">
                             <div className="flex items-center justify-between">
-                                <label className="text-[10px] uppercase text-white/40 tracking-widest">環境音</label>
-                                <span className="text-[9px] text-white/25">※ バックグラウンド再生対応</span>
+                                <label className="t-xs uppercase text-white/40 tracking-widest">環境音</label>
+                                <span className="t-xxs text-white/25">※ バックグラウンド再生対応</span>
                             </div>
                             <div className="grid grid-cols-4 gap-1.5">
                                 {ENV_OPTIONS.map(opt => {
@@ -2613,7 +2808,7 @@
                                             aria-label={`環境音: ${hasFile ? fileInfo.name : opt.label}`}
                                             aria-pressed={selectedEnv === opt.id}
                                             aria-disabled={isDisabled}
-                                            className={`py-1.5 px-1 rounded-lg text-[10px] font-medium border transition-all duration-200 truncate ${selectedEnv === opt.id
+                                            className={`py-1.5 px-1 rounded-lg t-xs font-medium border transition-all duration-200 truncate ${selectedEnv === opt.id
                                                 ? 'bg-white/10 border-white/25 text-white shadow-sm'
                                                 : isDisabled
                                                     ? 'border-white/5 text-white/15 cursor-default'
@@ -2631,8 +2826,8 @@
                         {/* Breathing Guide Selector */}
                         <div>
                             <div className="flex justify-between items-center mb-2">
-                                <label className="text-[10px] uppercase text-white/40 tracking-widest">呼吸ガイド</label>
-                                <span className="text-[9px] text-white/25">※ 再生中に表示されます</span>
+                                <label className="t-xs uppercase text-white/40 tracking-widest">呼吸ガイド</label>
+                                <span className="t-xxs text-white/25">※ 再生中に表示されます</span>
                             </div>
                             <div className="grid grid-cols-3 gap-1.5">
                                 {BREATH_OPTIONS.map(opt => (
@@ -2641,7 +2836,7 @@
                                         onClick={() => setBreathId(opt.id)}
                                         aria-label={`呼吸ガイド: ${opt.label}`}
                                         aria-pressed={breathId === opt.id}
-                                        className={`py-1.5 px-1 rounded-lg text-[10px] font-medium border transition-all duration-200 truncate ${breathId === opt.id
+                                        className={`py-1.5 px-1 rounded-lg t-xs font-medium border transition-all duration-200 truncate ${breathId === opt.id
                                             ? 'bg-white/10 border-white/25 text-white shadow-sm'
                                             : 'border-white/5 text-white/35 hover:bg-white/5 hover:text-white/60'
                                             }`}
@@ -2651,7 +2846,7 @@
                                 ))}
                             </div>
                             {breathPattern && (
-                                <p className="text-[10px] text-white/35 leading-relaxed mt-2">
+                                <p className="t-xs text-white/35 leading-relaxed mt-2">
                                     {breathId === 'auto' && <span className="text-white/50">{breathPattern.label}（{breathPattern.ratio}）… </span>}
                                     {breathPattern.desc}
                                 </p>
@@ -2661,7 +2856,7 @@
                         {/* Volume Mixers */}
                         <div className="space-y-3">
                             <div>
-                                <div className="flex justify-between text-[10px] text-white/50 mb-1">
+                                <div className="flex justify-between t-xs text-white/50 mb-1">
                                     <span>🎧 脳波誘導 音量</span>
                                     <span className="font-mono">{masterVol}%</span>
                                 </div>
@@ -2674,7 +2869,7 @@
                                 />
                             </div>
                             <div>
-                                <div className="flex justify-between text-[10px] text-white/50 mb-1">
+                                <div className="flex justify-between t-xs text-white/50 mb-1">
                                     <span>🌿 環境音 音量</span>
                                     <span className="font-mono">{envVol}%</span>
                                 </div>
@@ -2692,11 +2887,11 @@
                         {!isPlaying && !isPaused && (
                             <div>
                                 <div className="flex justify-between items-center mb-2">
-                                    <label className="text-[10px] uppercase text-white/40 tracking-widest">いまのつらさ</label>
-                                    <span className="text-[9px] text-white/25">※ 任意・記録用</span>
+                                    <label className="t-xs uppercase text-white/40 tracking-widest">いまのつらさ</label>
+                                    <span className="t-xxs text-white/25">※ 任意・記録用</span>
                                 </div>
                                 <PainScale value={painBefore} onChange={setPainBefore} allowNone={true} />
-                                <p className="text-[10px] text-white/30 leading-relaxed mt-2">
+                                <p className="t-xs text-white/30 leading-relaxed mt-2">
                                     入力してから始めると、終了後に変化を記録できます（「—」は記録しない）。
                                 </p>
                             </div>
@@ -2737,7 +2932,7 @@
                         </div>
 
                         {isPaused && (
-                            <p className="text-center text-[11px] text-white/45 -mt-3">
+                            <p className="text-center t-xs text-white/45 -mt-3">
                                 一時停止中 — 再生ボタンで続きから再開します
                             </p>
                         )}
@@ -2763,6 +2958,10 @@
                         onImport={importSettings}
                         customFolderFiles={customFolderFiles}
                         setCustomFolderFiles={setCustomFolderFiles}
+                        fontScaleId={fontScaleId}
+                        setFontScaleId={setFontScaleId}
+                        endNotify={endNotify}
+                        setEndNotify={setEndNotify}
                     />
 
 
