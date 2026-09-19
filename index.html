@@ -543,6 +543,11 @@
                 this._envFileBlobUrl = null; // Blobから生成したObject URL（廃棄用）
                 this._currentEnvVol = undefined; // 音量保持用
 
+                // 出力経路（バックグラウンド再生のためのメディア要素）
+                this.outputEl = null;          // MediaStreamを鳴らす<audio>要素
+                this.streamDest = null;        // MediaStreamAudioDestinationNode
+                this._outputCheckTimer = null; // 実際に鳴り始めたかの後追い確認
+
                 // フェードアウト中の破棄予約（再生を押し直したらキャンセルする）
                 this._fadeTimer = null;
                 this._envFadeTimer = null;
@@ -556,21 +561,111 @@
 
                     // Master Gain (Binaural)
                     this.masterGain = this.ctx.createGain();
-                    this.masterGain.connect(this.ctx.destination);
-
                     // Environment Gain (Noise)
                     this.envGain = this.ctx.createGain();
-                    this.envGain.connect(this.ctx.destination);
+
+                    // 出力先を用意する（メディア要素経由、駄目なら直結）
+                    this._setupOutput();
+
+                    // OSに止められたら自動で復帰を試みる
+                    this.ctx.onstatechange = () => {
+                        if (this.ctx && this.ctx.state === 'suspended') {
+                            this.ctx.resume().catch(() => { });
+                        }
+                    };
                 }
                 if (this.ctx.state === 'suspended') {
                     this.ctx.resume();
                 }
             }
 
+            // 現在の出力先ノード（メディア要素経由ならそちら、無ければ直結先）
+            _outNode() {
+                return this.streamDest || (this.ctx ? this.ctx.destination : null);
+            }
+
+            // Web Audio を ctx.destination へ直に出すと、Androidでは「メディア再生」と
+            // みなされない。そのため画面を消したり他のアプリに切り替えた瞬間に
+            // OSがページを止め、音が切れる。通知領域の再生コントロールも出ない。
+            //
+            // MediaStream を経由して <audio> 要素から鳴らすと、本物のメディア再生として
+            // 扱われるため、バックグラウンドでも鳴り続ける。
+            _setupOutput() {
+                let ready = false;
+                try {
+                    if (typeof this.ctx.createMediaStreamDestination === 'function') {
+                        this.streamDest = this.ctx.createMediaStreamDestination();
+                        const el = document.createElement('audio');
+                        el.playsInline = true;
+                        el.setAttribute('playsinline', '');
+                        el.srcObject = this.streamDest.stream;
+                        el.style.display = 'none';
+                        document.body.appendChild(el);
+                        this.outputEl = el;
+                        ready = true;
+                    }
+                } catch (e) {
+                    console.error('メディア出力の準備に失敗しました:', e);
+                }
+
+                if (!ready) { this._connectDirect(); return; }
+
+                this.masterGain.connect(this.streamDest);
+                this.envGain.connect(this.streamDest);
+
+                const p = this.outputEl.play();
+                if (p && typeof p.catch === 'function') {
+                    p.catch(e => {
+                        console.error('メディア出力の再生に失敗しました:', e);
+                        this._fallbackToDirect();
+                    });
+                }
+                // play()が成功扱いでも実際には鳴らない端末があるため、後追いで確認する
+                if (this._outputCheckTimer) clearTimeout(this._outputCheckTimer);
+                this._outputCheckTimer = setTimeout(() => {
+                    this._outputCheckTimer = null;
+                    if (this.outputEl && this.outputEl.paused) {
+                        console.error('メディア出力が始まらないため直結に切り替えます');
+                        this._fallbackToDirect();
+                    }
+                }, 1000);
+            }
+
+            // メディア要素が使えない環境向けの保険。従来どおり destination へ直結する
+            _fallbackToDirect() {
+                if (this._outputCheckTimer) { clearTimeout(this._outputCheckTimer); this._outputCheckTimer = null; }
+                this._removeOutputEl();
+                this.streamDest = null;
+                this._connectDirect();
+            }
+
+            _connectDirect() {
+                if (!this.ctx) return;
+                // 二重に鳴らさないよう、既存の接続を切ってから繋ぎ直す
+                try { this.masterGain.disconnect(); } catch (e) { }
+                try { this.envGain.disconnect(); } catch (e) { }
+                this.masterGain.connect(this.ctx.destination);
+                this.envGain.connect(this.ctx.destination);
+            }
+
+            _removeOutputEl() {
+                if (!this.outputEl) return;
+                try {
+                    this.outputEl.pause();
+                    this.outputEl.srcObject = null;
+                    this.outputEl.remove();
+                } catch (e) { }
+                this.outputEl = null;
+            }
+
             // AudioContextがsuspendedになった場合に再開する（バックグラウンド復帰時用）
             ensureContextRunning() {
                 if (this.ctx && this.ctx.state === 'suspended') {
                     this.ctx.resume().catch(() => {});
+                }
+                // 出力用のメディア要素がOSに止められていたら鳴らし直す
+                if (this.outputEl && this.outputEl.paused) {
+                    this.outputEl.play().catch(() => { });
                 }
             }
 
@@ -752,7 +847,7 @@
                         g.gain.setValueAtTime(0.0001, now + offset);
                         g.gain.exponentialRampToValueAtTime(volume, now + offset + 0.04);
                         g.gain.exponentialRampToValueAtTime(0.0001, now + offset + 1.2);
-                        o.connect(g).connect(this.ctx.destination);
+                        o.connect(g).connect(this._outNode());
                         o.start(now + offset);
                         o.stop(now + offset + 1.25);
                     } catch (e) { console.error('終了音の再生に失敗しました:', e); }
@@ -818,7 +913,11 @@
                 }
                 this.stopNoise();
                 this.stopEnvFile(); // 環境音ファイルも停止
+                if (this._outputCheckTimer) { clearTimeout(this._outputCheckTimer); this._outputCheckTimer = null; }
+                this._removeOutputEl();
+                this.streamDest = null;
                 if (this.ctx) {
+                    this.ctx.onstatechange = null;
                     this.ctx.close().catch(e => console.error(e));
                     this.ctx = null;
                 }
@@ -1848,8 +1947,14 @@
                         artist: '脳波ブースター Pro',
                         album: 'Gamma Wave Booster',
                     });
-                    navigator.mediaSession.setActionHandler('pause', () => pauseSession());
-                    navigator.mediaSession.setActionHandler('play', () => { });
+                    navigator.mediaSession.playbackState = 'playing';
+                    const call = (name) => () => {
+                        const fn = controlsRef.current[name];
+                        if (fn) fn();
+                    };
+                    navigator.mediaSession.setActionHandler('pause', call('pause'));
+                    navigator.mediaSession.setActionHandler('play', call('resume'));
+                    try { navigator.mediaSession.setActionHandler('stop', call('stop')); } catch (e) { }
                 }
 
                 // Wake Lock APIでスクリーンオフ防止
@@ -1922,7 +2027,13 @@
 
                 // MediaSession クリア
                 if ('mediaSession' in navigator) {
-                    navigator.mediaSession.metadata = null;
+                    if (pause) {
+                        // 一時停止中は通知を残し、再生ボタンで続きから戻れるようにする
+                        navigator.mediaSession.playbackState = 'paused';
+                    } else {
+                        navigator.mediaSession.playbackState = 'none';
+                        navigator.mediaSession.metadata = null;
+                    }
                 }
 
                 // チャイムは AudioContext が生きているうちに予約する必要があるため、
@@ -2670,6 +2781,15 @@
             // Settings Modal State
             const [showSettings, setShowSettings] = useState(false);
             const importFileRef = useRef(null);
+            // OSの通知領域から呼ばれる操作。毎レンダーで最新の関数に差し替えるため、
+            // 通知のボタンが古い状態を掴んで誤作動することがない
+            const controlsRef = useRef({});
+            controlsRef.current = {
+                pause: pauseSession,
+                resume: () => { if (!isPlaying) togglePlay(); },
+                stop: stopSession,
+            };
+
             const [selectedGroup, setSelectedGroup] = useState(MODE_GROUPS[0].id);
 
             // 実際に表示する呼吸パターン（'auto' のときはモードから自動選択）
