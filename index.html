@@ -1750,7 +1750,6 @@
             const elapsedRef = useRef(0);             // 常に最新のelapsedを保持するref
             const [duration, setDuration] = useState(3600); // seconds (default 60m)
             const timerRef = useRef(null);
-            const wakeLockRef = useRef(null);
             const isPlayingRef = useRef(false); // バックグラウンド維持用ref
             const sessionStartRef = useRef(null); // セッション開始時刻(Date.now())
             const durationRef = useRef(3600);    // 常に最新のdurationを保持するref
@@ -1930,7 +1929,6 @@
                     };
                 }
                 isPlayingRef.current = true; // ref同期（バックグラウンド用）
-                window.__gammaIsPlaying = true; // グローバルフラグ（visibilitychange用）
                 updateFrequency(resumeFrom); // Start oscillators
 
                 // Fade in master volume
@@ -1955,13 +1953,6 @@
                     navigator.mediaSession.setActionHandler('pause', call('pause'));
                     navigator.mediaSession.setActionHandler('play', call('resume'));
                     try { navigator.mediaSession.setActionHandler('stop', call('stop')); } catch (e) { }
-                }
-
-                // Wake Lock APIでスクリーンオフ防止
-                if ('wakeLock' in navigator) {
-                    navigator.wakeLock.request('screen').then(lock => {
-                        wakeLockRef.current = lock;
-                    }).catch(e => console.log('Wake Lock取得失敗:', e));
                 }
 
                 // --- バックグラウンドkeepAlive ---
@@ -2006,7 +1997,6 @@
                 const meta = sessionMetaRef.current;
                 const actualSec = elapsedRef.current;
                 isPlayingRef.current = false; // ref同期
-                window.__gammaIsPlaying = false; // グローバルフラグ
                 sessionStartRef.current = null; // タイマー無効化
                 setIsPlaying(false);
                 setIsPaused(pause);
@@ -2017,12 +2007,6 @@
                 if (bgKeepAliveRef.current) {
                     clearInterval(bgKeepAliveRef.current);
                     bgKeepAliveRef.current = null;
-                }
-
-                // Wake Lock解放
-                if (wakeLockRef.current) {
-                    wakeLockRef.current.release().catch(() => { });
-                    wakeLockRef.current = null;
                 }
 
                 // MediaSession クリア
@@ -3197,20 +3181,13 @@
                     }
                 });
             } else {
-                // ページが再表示された時: AudioContextとWake Lockを復旧
-                // 一時停止されたメディア要素を再生
+                // ページが再表示された時: 止められていたメディア要素を再生し直す
                 const mediaElements = document.querySelectorAll('video, audio');
                 mediaElements.forEach(el => {
                     if (el.paused && el.dataset.wasPlaying === 'true') {
                         el.play().catch(() => { });
                     }
                 });
-
-                // Wake Lockの再取得（ページが再表示されるとWake Lockは自動解放される）
-                // window.__gammaIsPlaying はReact内のstartSession/stopSessionで管理
-                if ('wakeLock' in navigator && window.__gammaIsPlaying) {
-                    navigator.wakeLock.request('screen').catch(() => { });
-                }
             }
         });
 
