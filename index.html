@@ -538,9 +538,11 @@
                 this.oscR = null;
                 this.cameraNoiseNode = null; // For pink/brown noise
 
-                // 環境音ファイル再生 (HTMLMediaElement独立再生方式)
-                this.envFileElement = null; // <audio>要素
-                this._envFileBlobUrl = null; // Blobから生成したObject URL（廃棄用）
+                // 環境音ファイル再生
+                this.envFileElement = null;   // 音源の<audio>要素
+                this.envSourceNode = null;    // それをAudioContextへ取り込むノード
+                this._envRouted = false;      // AudioContext経由で鳴らせているか
+                this._envFileBlobUrl = null;  // Blobから生成したObject URL（廃棄用）
                 this._currentEnvVol = undefined; // 音量保持用
 
                 // 出力経路（バックグラウンド再生のためのメディア要素）
@@ -667,6 +669,10 @@
                 if (this.outputEl && this.outputEl.paused) {
                     this.outputEl.play().catch(() => { });
                 }
+                // 環境音の音源も同様に鳴らし直す
+                if (this.envFileElement && this.envFileElement.paused && this.envFileElement.src) {
+                    this.envFileElement.play().catch(() => { });
+                }
             }
 
             setBinaural(carrier, diff) {
@@ -764,11 +770,14 @@
                 }
             }
 
-            // ─── 環境音ファイル: HTMLMediaElement独立再生方式 ───
-            // AudioContextへのルーティング(createMediaElementSource)を行うと
-            // 特にAndroid Chromeの仕様により、バックグラウンド時にOSがメディアフォーカスを外してしまうことがある。
-            // これを防ぐため、環境音は完全に独立した<audio>タグ上で再生し、
-            // 脳波誘導(AudioContext)と「同時並行で」再生させる。
+            // ─── 環境音ファイルの再生 ───
+            // 以前は脳波誘導とは別の独立したメディア要素で鳴らしていたが、
+            // バックグラウンドではOSがメディア要素を個別に止めるため、環境音だけ消えていた。
+            // 非表示の<video>要素はとりわけ止められやすい。
+            //
+            // そこで環境音をAudioContextへ取り込み、脳波誘導とまとめて
+            // 一つの出力（_setupOutputのメディア要素）から鳴らす。
+            // 止められずに鳴り続けている出力に相乗りさせるのが狙い。
             playEnvFile(source) {
                 this.stopEnvFile();
                 if (!source) return;
@@ -784,38 +793,55 @@
                         this._envFileBlobUrl = null;
                     }
 
-                    // <video>要素をオーディオ代わりに使用する（モバイルバックグラウンド再生に最も強固）
-                    // こうすることでモバイルOSが「アクティブなメディア再生」とみなしやすくなる
-                    const audio = document.createElement('video');
-                    audio.src = blobUrl;
-                    audio.loop = true;
-                    audio.playsInline = true; // iOS/Androidバックグラウンド向け必須
+                    const el = document.createElement('audio');
+                    el.src = blobUrl;
+                    el.loop = true;
+                    el.playsInline = true;
+                    el.setAttribute('playsinline', ''); // iOS向け
+                    el.style.display = 'none';
+                    document.body.appendChild(el);
 
-                    // DOMへの確実な追加（メディアセッションに維持させるために必須）
-                    audio.style.display = 'none';
-                    document.body.appendChild(audio);
+                    // AudioContextへ取り込む。失敗した端末では従来どおり単独で鳴らす
+                    let routed = false;
+                    if (this.ctx && this.envGain) {
+                        try {
+                            this.envSourceNode = this.ctx.createMediaElementSource(el);
+                            this.envSourceNode.connect(this.envGain);
+                            routed = true;
+                        } catch (e) {
+                            console.error('環境音をAudioContextへ繋げませんでした:', e);
+                            this.envSourceNode = null;
+                        }
+                    }
+                    this._envRouted = routed;
 
-                    // --- バックグラウンド移行時などOSの強制停止(pause)に抵抗して即座に再開させるハック ---
-                    audio.addEventListener('pause', () => {
-                        // this.envFileElementが設定し直されていない/破棄されていないのにpauseされたなら、OSの強制遮断
-                        if (this.envFileElement === audio && audio.src) {
-                            audio.play().catch(e => console.warn('background auto-play prevented', e));
+                    // 取り込めた場合、音量はenvGainが受け持つので要素側は絞らない
+                    el.volume = routed
+                        ? 1
+                        : (this._currentEnvVol !== undefined ? this._currentEnvVol : 50) / 100;
+
+                    // OSに止められたら鳴らし直す
+                    el.addEventListener('pause', () => {
+                        if (this.envFileElement === el && el.src) {
+                            el.play().catch(() => { });
                         }
                     });
 
-                    // 最新の環境音ボリュームを適用
-                    audio.volume = (this._currentEnvVol !== undefined ? this._currentEnvVol : 50) / 100;
+                    // 再生開始（ユーザー操作の流れの中なのでiOSでも許可される）
+                    el.play().catch(e => console.error('環境音の再生に失敗しました:', e));
 
-                    // 再生開始（ユーザージェスチャーコンテキスト内のためiOSでも有効）
-                    audio.play().catch(e => console.error('環境音play error:', e));
-
-                    this.envFileElement = audio;
+                    this.envFileElement = el;
                 } catch (e) {
                     console.error('playEnvFile error:', e);
                 }
             }
 
             stopEnvFile() {
+                if (this.envSourceNode) {
+                    try { this.envSourceNode.disconnect(); } catch (e) { }
+                    this.envSourceNode = null;
+                }
+                this._envRouted = false;
                 if (this.envFileElement) {
                     try {
                         this.envFileElement.pause();
@@ -879,8 +905,9 @@
                 if (this.masterGain) rampToZero(this.masterGain.gain);
                 if (this.envGain) rampToZero(this.envGain.gain);
 
-                // 環境音ファイルはAudioContextの外（<video>要素）で鳴っているので個別にフェードする
-                const el = this.envFileElement;
+                // 単独再生にフォールバックしている環境音だけは、個別にフェードする
+                // （AudioContextへ取り込めている場合は上の envGain のランプで一緒に下がる）
+                const el = this._envRouted ? null : this.envFileElement;
                 if (el) {
                     const startVol = el.volume;
                     const stepMs = 50;
@@ -963,8 +990,9 @@
                     }
                 }
 
-                // 環境音要素(HTMLMediaElement)の直接音量制御
-                if (this.envFileElement) {
+                // AudioContextへ取り込めている場合は envGain が音量を受け持つ。
+                // 単独再生にフォールバックしているときだけ、要素側で絞る。
+                if (this.envFileElement && !this._envRouted) {
                     this.envFileElement.volume = envVol / 100;
                 }
             }
